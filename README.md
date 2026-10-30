@@ -30,7 +30,7 @@ https://github.com/louie850909/kawaii-physics-unity.git
 MIT — 見 [LICENSE.md](LICENSE.md)。
 
 本套件移植自 KawaiiPhysics（Copyright (c) 2019-2026 pafuhana1213，MIT License）。
-移植的演算法與從原作取得的測試資料沿用原作的授權；原作的著作權與授權聲明完整收在 `LICENSE.md`，散布時請一併附上。
+移植的演算法與從原作取得的測試資料沿用原作的授權；原作的著作權與授權聲明完整收在 [Third Party Notices.md](Third%20Party%20Notices.md)，散布時請一併附上。
 
 This package is derived from KawaiiPhysics, Copyright (c) 2019-2026 pafuhana1213, released under the MIT License.
-The original copyright and permission notice is reproduced in [LICENSE.md](LICENSE.md) and must be kept with any copy of this package.
+The original copyright and permission notice is reproduced in [Third Party Notices.md](Third%20Party%20Notices.md) and must be kept with any copy of this package.

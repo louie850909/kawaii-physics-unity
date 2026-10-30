@@ -238,4 +238,4 @@ Unity.exe -batchmode -projectPath <專案> -runTests -testPlatform PlayMode -tes
 
 ## 授權
 
-MIT，見 `LICENSE.md`。移植的演算法與從原作取得的測試資料沿用原作 KawaiiPhysics（© pafuhana1213，MIT）的授權，散布時要連同 `LICENSE.md` 一起附上。
+MIT，見 `LICENSE.md`。移植的演算法與從原作取得的測試資料沿用原作 KawaiiPhysics（© pafuhana1213，MIT）的授權，原作的授權全文在 `Third Party Notices.md`，散布時要一起附上。
