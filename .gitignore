@@ -1,0 +1,8 @@
+# Unity package repo: no project folders, IDE or OS files
+.DS_Store
+Thumbs.db
+.vs/
+.idea/
+*.csproj
+*.sln
+*.bak*

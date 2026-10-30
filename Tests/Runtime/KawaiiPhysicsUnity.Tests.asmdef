@@ -1,0 +1,16 @@
+{
+  "name": "KawaiiPhysicsUnity.Tests",
+  "rootNamespace": "KawaiiPhysicsUnity.Tests",
+  "references": [
+    "KawaiiPhysicsUnity",
+    "Unity.Burst",
+    "Unity.Mathematics",
+    "Unity.Collections",
+    "UnityEngine.TestRunner"
+  ],
+  "allowUnsafeCode": true,
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "autoReferenced": false,
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"]
+}

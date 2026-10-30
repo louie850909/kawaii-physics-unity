@@ -1,0 +1,7 @@
+{
+  "name": "KawaiiPhysicsUnity",
+  "rootNamespace": "KawaiiPhysicsUnity",
+  "references": ["Unity.Burst", "Unity.Mathematics", "Unity.Collections"],
+  "allowUnsafeCode": true,
+  "autoReferenced": true
+}

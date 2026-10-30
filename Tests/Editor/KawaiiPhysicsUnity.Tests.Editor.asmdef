@@ -1,0 +1,20 @@
+{
+  "name": "KawaiiPhysicsUnity.Tests.Editor",
+  "rootNamespace": "KawaiiPhysicsUnity.Tests",
+  "references": [
+    "KawaiiPhysicsUnity",
+    "KawaiiPhysicsUnity.Editor",
+    "KawaiiPhysicsUnity.Tests",
+    "Unity.Burst",
+    "Unity.Mathematics",
+    "Unity.Collections",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner"
+  ],
+  "includePlatforms": ["Editor"],
+  "allowUnsafeCode": true,
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "autoReferenced": false,
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"]
+}

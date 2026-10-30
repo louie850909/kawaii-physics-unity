@@ -1,0 +1,7 @@
+{
+  "name": "KawaiiPhysicsUnity.Editor",
+  "rootNamespace": "KawaiiPhysicsUnity.Editor",
+  "references": ["KawaiiPhysicsUnity"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

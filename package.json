@@ -1,0 +1,35 @@
+{
+  "name": "com.louie.kawaii-physics",
+  "version": "0.4.5",
+  "displayName": "KawaiiPhysics for Unity",
+  "description": "Burst/Jobs port of KawaiiPhysics (pafuhana1213, MIT): pseudo-physics for hair, skirts and accessories driven by bone chains, plus translational soft tissue (breasts, hips) with damped springs.",
+  "unity": "6000.6",
+  "license": "MIT",
+  "author": {
+    "name": "louie850909",
+    "url": "https://github.com/louie850909"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/louie850909/kawaii-physics-unity.git"
+  },
+  "documentationUrl": "https://github.com/louie850909/kawaii-physics-unity/blob/main/Documentation~/index.md",
+  "changelogUrl": "https://github.com/louie850909/kawaii-physics-unity/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/louie850909/kawaii-physics-unity/blob/main/LICENSE.md",
+  "dependencies": {
+    "com.unity.burst": "2.0.0",
+    "com.unity.mathematics": "1.4.0",
+    "com.unity.collections": "6.6.0",
+    "com.unity.modules.physics": "1.0.0",
+    "com.unity.modules.wind": "1.0.0",
+    "com.unity.modules.animation": "1.0.0",
+    "com.unity.modules.jsonserialize": "1.0.0"
+  },
+  "samples": [
+    {
+      "displayName": "Basic",
+      "description": "A scene that builds a few characters with hair-like chains at runtime: colliders, wind, external forces, soft-tissue bust bones and spawning/despawning.",
+      "path": "Samples~/Basic"
+    }
+  ]
+}
