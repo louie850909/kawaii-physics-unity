@@ -109,6 +109,8 @@ namespace KawaiiPhysicsUnity
     {
         public float3 Location;
         public float Radius;
+        /// <summary>世界單位（公尺）的尺寸：每幀依這條鏈的模擬空間縮放換成上面的模擬單位（SimSpace 驅動的形狀不換）。</summary>
+        public float WorldRadius;
         public int Inner;
         public int DrivingIndex;
         public float3 Offset;
@@ -122,6 +124,8 @@ namespace KawaiiPhysicsUnity
         public quaternion Rotation;
         public float Radius;
         public float Length;
+        /// <summary>世界單位（公尺）的尺寸：每幀依這條鏈的模擬空間縮放換成上面的模擬單位（SimSpace 驅動的形狀不換）。</summary>
+        public float WorldRadius, WorldLength;
         public int DrivingIndex;
         public float3 Offset;
         public quaternion OffsetRotation;
@@ -141,6 +145,8 @@ namespace KawaiiPhysicsUnity
         public float Radius0;
         public float Radius1;
         public float Length;
+        /// <summary>世界單位（公尺）的尺寸：每幀依這條鏈的模擬空間縮放換成上面的模擬單位（SimSpace 驅動的形狀不換）。</summary>
+        public float WorldRadius0, WorldRadius1, WorldLength;
         public int DrivingIndex;
         public float3 Offset;
         public quaternion OffsetRotation;
@@ -158,6 +164,8 @@ namespace KawaiiPhysicsUnity
         public float3 Location;
         public quaternion Rotation;
         public float3 Extent;
+        /// <summary>世界單位（公尺）的尺寸：每幀依這條鏈的模擬空間縮放換成上面的模擬單位（SimSpace 驅動的形狀不換）。</summary>
+        public float3 WorldExtent;
         public int DrivingIndex;
         public float3 Offset;
         public quaternion OffsetRotation;
@@ -191,6 +199,8 @@ namespace KawaiiPhysicsUnity
         public quaternion WorldRotation;
         public float3 LocalBoundsMin;
         public float3 LocalBoundsMax;
+        /// <summary>模擬空間的一個單位是幾公尺（凸包的面與包圍盒是公尺）。0 當成 1（直接呼叫碰撞函式的測試）。</summary>
+        public float MetersPerUnit;
         public int PlaneStart;
         public int PlaneCount;
     }

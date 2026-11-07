@@ -340,6 +340,7 @@ namespace KawaiiPhysicsUnity
                 if (s->DrivingIndex == KPDriving.SimSpace) continue;
                 var world = s->DrivingIndex >= 0 ? DrivenPosition(w, s->DrivingIndex, s->Offset) : s->WorldLocation;
                 s->Location = mul(invSim, world - inst.SimPosition) * invSimScale;
+                s->Radius = s->WorldRadius * invSimScale;   // 碰撞體的尺寸是公尺 → 模擬單位
             }
             for (int c = 0; c < inst.CapsuleCount; c++)
             {
@@ -348,6 +349,8 @@ namespace KawaiiPhysicsUnity
                 DrivenPose(w, s->DrivingIndex, s->Offset, s->OffsetRotation, s->WorldLocation, s->WorldRotation, out var p, out var q);
                 s->Location = mul(invSim, p - inst.SimPosition) * invSimScale;
                 s->Rotation = mul(invSim, q);
+                s->Radius = s->WorldRadius * invSimScale;
+                s->Length = s->WorldLength * invSimScale;
             }
             for (int c = 0; c < inst.TaperedCount; c++)
             {
@@ -356,6 +359,9 @@ namespace KawaiiPhysicsUnity
                 DrivenPose(w, s->DrivingIndex, s->Offset, s->OffsetRotation, s->WorldLocation, s->WorldRotation, out var p, out var q);
                 s->Location = mul(invSim, p - inst.SimPosition) * invSimScale;
                 s->Rotation = mul(invSim, q);
+                s->Radius0 = s->WorldRadius0 * invSimScale;
+                s->Radius1 = s->WorldRadius1 * invSimScale;
+                s->Length = s->WorldLength * invSimScale;
             }
             for (int c = 0; c < inst.BoxCount; c++)
             {
@@ -364,6 +370,7 @@ namespace KawaiiPhysicsUnity
                 DrivenPose(w, s->DrivingIndex, s->Offset, s->OffsetRotation, s->WorldLocation, s->WorldRotation, out var p, out var q);
                 s->Location = mul(invSim, p - inst.SimPosition) * invSimScale;
                 s->Rotation = mul(invSim, q);
+                s->Extent = s->WorldExtent * invSimScale;
             }
             for (int c = 0; c < inst.PlaneCount; c++)
             {
@@ -380,6 +387,7 @@ namespace KawaiiPhysicsUnity
                 DrivenPose(w, s->DrivingIndex, s->Offset, s->OffsetRotation, s->WorldLocation, s->WorldRotation, out var p, out var q);
                 s->Location = mul(invSim, p - inst.SimPosition) * invSimScale;
                 s->Rotation = mul(invSim, q);
+                s->MetersPerUnit = inst.SimScale;   // 凸包的面與包圍盒是公尺
             }
         }
 

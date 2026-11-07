@@ -443,7 +443,7 @@ namespace KawaiiPhysicsUnity
                         world.Spheres[inst.SphereStart + rt.StaticSpheres + spheres++] = new KPSphere
                         {
                             DrivingIndex = KPDriving.World, WorldLocation = t.TransformPoint(sc.center),
-                            Radius = sc.radius * Mathf.Max(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z)),
+                            WorldRadius = sc.radius * Mathf.Max(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z)),
                         };
                         break;
                     case CapsuleCollider cc when capsules < cap:
@@ -456,7 +456,7 @@ namespace KawaiiPhysicsUnity
                         world.Capsules[inst.CapsuleStart + rt.StaticCapsules + capsules++] = new KPCapsule
                         {
                             DrivingIndex = KPDriving.World, WorldLocation = t.TransformPoint(cc.center), WorldRotation = t.rotation * axisRot,
-                            Radius = r, Length = Mathf.Max(0f, cc.height * axisScale - 2f * r),
+                            WorldRadius = r, WorldLength = Mathf.Max(0f, cc.height * axisScale - 2f * r),
                             Rotation = quaternion.identity, OffsetRotation = quaternion.identity,
                         };
                         break;
@@ -465,7 +465,7 @@ namespace KawaiiPhysicsUnity
                         world.Boxes[inst.BoxStart + rt.StaticBoxes + boxes++] = new KPBox
                         {
                             DrivingIndex = KPDriving.World, WorldLocation = t.TransformPoint(bc.center), WorldRotation = t.rotation,
-                            Extent = Vector3.Scale(bc.size * 0.5f, new Vector3(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z))),
+                            WorldExtent = Vector3.Scale(bc.size * 0.5f, new Vector3(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z))),
                             Rotation = quaternion.identity, OffsetRotation = quaternion.identity,
                         };
                         break;
@@ -476,7 +476,7 @@ namespace KawaiiPhysicsUnity
                         world.Boxes[inst.BoxStart + rt.StaticBoxes + boxes++] = new KPBox
                         {
                             DrivingIndex = KPDriving.World, WorldLocation = t.TransformPoint(bounds.center), WorldRotation = t.rotation,
-                            Extent = Vector3.Scale(bounds.extents, new Vector3(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z))),
+                            WorldExtent = Vector3.Scale(bounds.extents, new Vector3(Mathf.Abs(s.x), Mathf.Abs(s.y), Mathf.Abs(s.z))),
                             Rotation = quaternion.identity, OffsetRotation = quaternion.identity,
                         };
                         break;
@@ -487,7 +487,7 @@ namespace KawaiiPhysicsUnity
                         world.Capsules[inst.CapsuleStart + rt.StaticCapsules + capsules++] = new KPCapsule
                         {
                             DrivingIndex = KPDriving.World, WorldLocation = t.TransformPoint(ch.center), WorldRotation = t.rotation,
-                            Radius = r, Length = Mathf.Max(0f, ch.height * Mathf.Abs(s.y) - 2f * r),
+                            WorldRadius = r, WorldLength = Mathf.Max(0f, ch.height * Mathf.Abs(s.y) - 2f * r),
                             Rotation = quaternion.identity, OffsetRotation = quaternion.identity,
                         };
                         break;
@@ -505,7 +505,7 @@ namespace KawaiiPhysicsUnity
                 world.Boxes[inst.BoxStart + rt.StaticBoxes + boxes++] = new KPBox
                 {
                     DrivingIndex = KPDriving.World, WorldLocation = hit.point - hit.normal * half, WorldRotation = rot,
-                    Extent = new Vector3(5f, half, 5f), Rotation = quaternion.identity, OffsetRotation = quaternion.identity,
+                    WorldExtent = new Vector3(5f, half, 5f), Rotation = quaternion.identity, OffsetRotation = quaternion.identity,
                 };
             }
 

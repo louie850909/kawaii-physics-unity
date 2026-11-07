@@ -16,7 +16,7 @@ Unity 6000.6 以上。Package Manager →「+」→「Add package from git URL�
 https://github.com/louie850909/kawaii-physics-unity.git
 ```
 
-指定版本：網址後面加 `#v0.4.6`。
+指定版本：網址後面加 `#v0.4.7`。
 
 ## 文件 / Docs
 

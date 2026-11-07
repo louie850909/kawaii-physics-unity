@@ -485,8 +485,10 @@ namespace KawaiiPhysicsUnity
         public static void AdjustByConvex(KPBone* b, KPConvex* cv, float4* planes)
         {
             if (cv->PlaneCount <= 0) return;
-            var r = b->Settings.Radius;
-            var local = mul(conjugate(cv->Rotation), b->Location - cv->Location);
+            // 凸包的面與包圍盒是公尺：骨頭換到公尺算，推出量再換回模擬單位
+            var m = cv->MetersPerUnit > 0f ? cv->MetersPerUnit : 1f;
+            var r = b->Settings.Radius * m;
+            var local = mul(conjugate(cv->Rotation), b->Location - cv->Location) * m;
             var d = local - clamp(local, cv->LocalBoundsMin, cv->LocalBoundsMax);
             if (lengthsq(d) > r * r) return;
             var maxDist = float.MinValue;
@@ -502,7 +504,7 @@ namespace KawaiiPhysicsUnity
                 }
             }
             if (maxDist < r)
-                b->Location = mul(cv->Rotation, local + best * (r - maxDist)) + cv->Location;
+                b->Location = mul(cv->Rotation, (local + best * (r - maxDist)) / m) + cv->Location;
         }
 
         /// <summary>對應原作 AdjustByAngleLimit。</summary>
