@@ -133,6 +133,44 @@ namespace KawaiiPhysicsUnity.Tests
             Assert.That(Quaternion.Angle(bone.localRotation, rest), Is.LessThan(1e-3f));
         }
 
+        [Test(Description = "在 LateUpdate 這類兩個階段之間停用：當場放回靜止姿勢，同一幀的解算也不寫回")]
+        public void UnregisterBetweenPhasesRestoresImmediately()
+        {
+            var chains = new List<KawaiiPhysicsChain> { Spawn("A", Vector3.zero, 0, false) };
+            var bases = new List<Vector3> { Vector3.zero };
+            var bone = chains[0].GetComponentsInChildren<Transform>().First(t => t.name == "c0_3");
+            var rest = bone.localRotation;
+            for (int f = 0; f < 60; f++) Frame(f, chains, bases);
+            KPSystem.RestorePhase();
+            KPTestRig.Move(chains[0].transform, 0, 60, bases[0]);
+            KPSystem.SimulatePhase(1f / 60f);
+            Assert.That(Quaternion.Angle(bone.localRotation, rest), Is.GreaterThan(0.01f), "物理有動到骨頭");
+            KPSystem.Unregister(chains[0]);
+            Assert.That(Quaternion.Angle(bone.localRotation, rest), Is.LessThan(1e-3f), "停用當下");
+            KPSystem.SimulatePhase(1f / 60f);
+            Assert.That(Quaternion.Angle(bone.localRotation, rest), Is.LessThan(1e-3f), "同一幀的解算之後");
+            Assert.That(KPSystem.ChainCount, Is.EqualTo(0));
+        }
+
+        [Test(Description = "停用後改了骨頭的區域姿勢（換裝、體型）：不會被舊的靜止姿勢蓋掉，再啟用時用新的姿勢當靜止姿勢")]
+        public void UnregisterForgetsRestPose()
+        {
+            var chains = new List<KawaiiPhysicsChain> { Spawn("A", Vector3.zero, 0, false) };
+            var bases = new List<Vector3> { Vector3.zero };
+            var bone = chains[0].GetComponentsInChildren<Transform>().First(t => t.name == "c0_2");
+            for (int f = 0; f < 30; f++) Frame(f, chains, bases);
+            KPSystem.Unregister(chains[0]);
+            var changed = bone.localPosition * 1.3f;
+            bone.localPosition = changed;
+            KPSystem.RestorePhase();
+            Assert.That(Vector3.Distance(bone.localPosition, changed), Is.LessThan(1e-6f), "停用後的下一幀不再寫回舊的靜止姿勢");
+
+            KPSystem.Register(chains[0]);
+            for (int f = 30; f < 60; f++) Frame(f, chains, bases);
+            KPSystem.Unregister(chains[0]);
+            Assert.That(Vector3.Distance(bone.localPosition, changed), Is.LessThan(1e-6f), "再啟用時記的是新的姿勢");
+        }
+
         // ---- 空洞與整理（Repack）：有外力的角色 ------------------------------
 
         /// <summary>每個角色三種外力（結果與時間只由幀號決定，兩次執行可以逐幀比對）。</summary>

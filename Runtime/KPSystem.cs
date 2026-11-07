@@ -89,10 +89,24 @@ namespace KawaiiPhysicsUnity
             membershipChanged = true;
         }
 
-        /// <summary>移出模擬（KawaiiPhysicsChain.OnDisable 會呼叫）。骨頭放回靜止姿勢。</summary>
+        /// <summary>
+        /// 移出模擬（KawaiiPhysicsChain.OnDisable 會呼叫）。當場移除這一條：骨頭立刻放回靜止姿勢，這一幀之後的解算也不再寫回；
+        /// 並忘掉這些骨頭的靜止姿勢，之後再有 Chain 用到同一根骨頭（重新啟用、換裝後的新 Chain）時，從那時候的姿勢重新記。
+        /// </summary>
         public static void Unregister(KawaiiPhysicsChain chain)
         {
-            if (chains.Remove(chain)) membershipChanged = true;
+            if (!chains.Remove(chain)) return;
+            membershipChanged = true;
+            var seg = chain.runtime?.Segment;
+            if (world == null || seg == null || !world.Segments.Contains(seg)) return;
+            // 等到下一幀才移除的話，呼叫端在那之前改的區域姿勢（換裝、體型）會被舊的靜止姿勢蓋掉
+            Sync();
+            if (seg.Rest == null) return;
+            foreach (var (index, _, _) in seg.Rest)
+            {
+                var t = seg.Transforms[index];
+                if (t != null) restCache.Remove(t);
+            }
         }
 
         /// <summary>

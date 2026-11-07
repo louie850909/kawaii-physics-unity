@@ -684,7 +684,7 @@
 |---|---|---|---|
 | `Backend` | static field | `KPBackend` | 解算的執行方式（預設 Burst 平行）。 |
 | `Register` | static method | `Void Register(KawaiiPhysicsChain chain)` | 加入模擬（KawaiiPhysicsChain.OnEnable 會呼叫）。下一幀只建這一條，其他 Chain 不受影響。 |
-| `Unregister` | static method | `Void Unregister(KawaiiPhysicsChain chain)` | 移出模擬（KawaiiPhysicsChain.OnDisable 會呼叫）。骨頭放回靜止姿勢。 |
+| `Unregister` | static method | `Void Unregister(KawaiiPhysicsChain chain)` | 移出模擬（KawaiiPhysicsChain.OnDisable 會呼叫）。當場移除這一條：骨頭立刻放回靜止姿勢，這一幀之後的解算也不再寫回； 並忘掉這些骨頭的靜止姿勢，之後再有 Chain 用到同一根骨頭（重新啟用、換裝後的新 Chain）時，從那時候的姿勢重新記。 |
 | `Register` | static method | `Void Register(KawaiiPhysicsSoftBody softBody)` | 軟組織加入模擬（KawaiiPhysicsSoftBody.OnEnable 會呼叫）。骨頭的靜止姿勢在這時記下來（動畫還沒動）。 下一幀重建軟組織，其他軟組織元件的模擬狀態沿用。 |
 | `Unregister` | static method | `Void Unregister(KawaiiPhysicsSoftBody softBody)` | 軟組織移出模擬（KawaiiPhysicsSoftBody.OnDisable 會呼叫）。下一幀動畫前骨頭放回靜止姿勢。 |
 | `RefreshWindZones` | static method | `Void RefreshWindZones()` | 場景的 WindZone 重新收集。場景載入／卸載、Chain 加入或移除時會自動做； 執行中用程式新增 WindZone 時呼叫這個（刪除的 WindZone 每幀會自動略過）。 |
