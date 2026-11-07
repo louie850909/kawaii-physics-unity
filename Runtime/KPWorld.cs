@@ -1429,18 +1429,18 @@ namespace KawaiiPhysicsUnity
             switch (shape)
             {
                 case KawaiiPhysicsCollider.Shape.Sphere:
-                    b.Spheres.Add(new KPSphere { Radius = radius, Inner = inner ? 1 : 0, DrivingIndex = driving, Offset = offset });
+                    b.Spheres.Add(new KPSphere { Radius = radius, WorldRadius = radius, Inner = inner ? 1 : 0, DrivingIndex = driving, Offset = offset });
                     break;
                 case KawaiiPhysicsCollider.Shape.Capsule:
-                    b.Capsules.Add(new KPCapsule { Radius = radius, Length = length, DrivingIndex = driving, Offset = offset, OffsetRotation = offsetRot,
+                    b.Capsules.Add(new KPCapsule { Radius = radius, Length = length, WorldRadius = radius, WorldLength = length, DrivingIndex = driving, Offset = offset, OffsetRotation = offsetRot,
                         Rotation = quaternion.identity, WorldRotation = quaternion.identity });
                     break;
                 case KawaiiPhysicsCollider.Shape.TaperedCapsule:
-                    b.Tapered.Add(new KPTaperedCapsule { Radius0 = radius, Radius1 = radius1, Length = length, DrivingIndex = driving, Offset = offset,
+                    b.Tapered.Add(new KPTaperedCapsule { Radius0 = radius, Radius1 = radius1, Length = length, WorldRadius0 = radius, WorldRadius1 = radius1, WorldLength = length, DrivingIndex = driving, Offset = offset,
                         OffsetRotation = offsetRot, Rotation = quaternion.identity, WorldRotation = quaternion.identity });
                     break;
                 case KawaiiPhysicsCollider.Shape.Box:
-                    b.Boxes.Add(new KPBox { Extent = extent, DrivingIndex = driving, Offset = offset, OffsetRotation = offsetRot,
+                    b.Boxes.Add(new KPBox { Extent = extent, WorldExtent = extent, DrivingIndex = driving, Offset = offset, OffsetRotation = offsetRot,
                         Rotation = quaternion.identity, WorldRotation = quaternion.identity });
                     break;
                 case KawaiiPhysicsCollider.Shape.Plane:

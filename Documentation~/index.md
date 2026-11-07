@@ -28,7 +28,7 @@ Package Manager →「+」→「Add package from git URL…」貼上：
 https://github.com/louie850909/kawaii-physics-unity.git
 ```
 
-指定版本時在網址後面加 `#v0.4.6`。也可以把這個 repo 下載下來，在 `Packages/manifest.json` 用本機路徑：
+指定版本時在網址後面加 `#v0.4.7`。也可以把這個 repo 下載下來，在 `Packages/manifest.json` 用本機路徑：
 
 ```json
 "com.louie.kawaii-physics": "file:<套件資料夾的路徑>"
@@ -188,6 +188,7 @@ WebGL 上 Burst 與工作執行緒的行為還沒確認（建置與實跑都未�
 ## 限制
 
 - **縮放**：角色根（元件）與骨頭假設等比縮放（取 lossyScale.x）。非等比縮放不會產生 NaN，但結果與原作不同。縮放為 0 時那一幀不模擬、也不寫回，縮放恢復後重新開始。
+- **單位**：`KawaiiPhysicsCollider` 的 `radius`、`radius1`、`length`、`extent`、凸包的網格，與簡易世界碰撞收集到的形狀，都是世界單位（公尺），元件（模擬空間）有縮放也一樣大（0.4.7 起；之前骨鏈把它們當成模擬單位，元件縮放不是 1 時碰撞體跟著縮放）。Chain 的骨頭 `radius`、`dummyBoneLength` 是元件空間的單位（跟著元件縮放）。
 - **世界碰撞**：Unity 的球掃掠不回報起點重疊，骨頭靜止貼著表面時最多會陷入一個半徑。
 - **自訂外力**：外力的型別只限套件提供的五種；`KPExternalForce` 不能從套件外繼承（每幀的 `PreApply` 用到內部的資料結構）。
 - **WindZone**：場景載入／卸載、Chain 加入或移除時會重新收集（停用中的也會收，之後啟用就生效）；執行中用程式新增 WindZone 之後呼叫 `KPSystem.RefreshWindZones()`。刪除的 WindZone 會自動略過。
