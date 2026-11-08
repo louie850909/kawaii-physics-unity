@@ -4,13 +4,29 @@
 
 ## [Unreleased]
 
+## [0.5.0-pre.1] - 2026-11-08
+
+v0.5 陣列接口（`KPRig`）的前置版本：設定類別與共用的流程。`KPRig` 本身在 0.5.0。元件的行為與模擬結果不變（`KPSnapshotTests` 逐位元一致）。
+
 ### Added
+- 陣列接口的設定類別 `KPRigChain`（含巢狀的 `RootBoneSetting`、`BoneConstraint`、`SyncBone`、`SyncTargetRoot`）、`KPRigCollider`、`KPRigSoftBody`：
+  欄位名稱與預設值跟元件一樣，骨頭參照改成骨架的索引（int，-1＝沒有），多一個 `enabled`。
+  `KPRigChain` 也有元件的執行時操作（暫時外力、突風、設定倍率、`ResetDynamics`、`MarkDirty`／`MarkSettingsDirty`）。
+- 外力依骨頭名稱的篩選：`KPExternalForce.applyBoneNameFilter`／`ignoreBoneNameFilter`、`CanApplyToName`（陣列接口沒有 Transform，只看名稱）。
+- 多載：`KawaiiPhysicsPreset.ApplyTo(KPRigChain)`／`CaptureFrom(KPRigChain)`、`KawaiiPhysicsEventPreset.Apply(KPRigChain)`。
+- 測試 `KPRigSettingsTests`：元件與設定類別的欄位名稱、型別、預設值一致（反射）；元件的每個欄位都有複製進設定類別；名稱篩選；多載。
 - 測試：重構用的逐位元快照（`KPSnapshotTests`，記錄檔 `Tests/Editor/KPSnapshots.txt`）。全功能的測試角色 3 種模擬空間、軟組織、
   每種碰撞體各一個的情境，第 0／1／60 幀把所有 Transform 的本地 TRS 與骨頭狀態各雜湊成一個值。v0.5 陣列接口的重構前後要一致。
   記錄檔跟 CPU 有關（Burst 的浮點結果），換機器要在重構之前重新記錄。
 - 測試：節點 id 的登記與回收（`KPHierarchyTests`）、角色反覆生成時登記表不會一直變大。
 
 ### Changed
+- 內部只剩一條吃設定類別的流程：`KawaiiPhysicsChain` 每幀把欄位複製進自己持有的 `KPRigChain`（骨頭與碰撞體的 Transform 只在同步、
+  比對結構簽章前換算成節點 id；穩態 0 配置），`KawaiiPhysicsSoftBody` 的每幀設定也經過 `KPRigSoftBody`。
+  暫時外力、設定倍率、重置與瞬移的要求搬進內部的 `KPChainControl`，元件與 `KPRigChain` 都轉給它。
+  建立時消耗的 `needWarmUp` 照舊寫回元件。
+- 簡易世界碰撞找元件（角色根）改用同步時解析的結果（原本每幀 `ResolveComponent`）；執行中換了上層 Animator 要呼叫 `MarkDirty`。
+- 文件：`api.md` 修正 `KawaiiPhysicsChain.externalForces`／`syncBones`、`KawaiiPhysicsCollider.extent` 抄錯的說明。
 - 內部重構（v0.5 陣列接口的準備，公開 API 與模擬結果不變，`KPSnapshotTests` 逐位元一致）：
   - 建骨鏈改成透過內部的骨頭來源介面 `KPHierarchy`（骨頭以節點 id 表示）。現在只有 Transform 版；v0.5 的 `KPRig` 會加陣列版，
     共用同一套建立程式（細分、橋接假骨、約束、SyncBone、碰撞體、Limits／Constraints 資產）。

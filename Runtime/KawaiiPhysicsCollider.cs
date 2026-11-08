@@ -59,8 +59,26 @@ namespace KawaiiPhysicsUnity
         void OnValidate() => KPSystem.RequestValidateAll();
 
         /// <summary>把區域 +Y 轉到 direction 軸的旋轉。</summary>
-        public Quaternion AxisRotation => direction == Axis.X ? Quaternion.Euler(0f, 0f, -90f)
-            : direction == Axis.Z ? Quaternion.Euler(90f, 0f, 0f) : Quaternion.identity;
+        public Quaternion AxisRotation => KPRigCollider.AxisRotationOf(direction);
+
+        [System.NonSerialized] KPRigCollider settings;
+
+        /// <summary>欄位複製進自己持有的一份 KPRigCollider（跟著的骨頭＝這個 Transform 的節點 id）。</summary>
+        internal KPRigCollider ToSettings(KPTransformHierarchy h)
+        {
+            var s = settings ??= new KPRigCollider();
+            s.bone = h.Id(transform);
+            s.shape = shape;
+            s.center = center;
+            s.direction = direction;
+            s.radius = radius;
+            s.radius1 = radius1;
+            s.length = length;
+            s.extent = extent;
+            s.inner = inner;
+            s.convexMesh = convexMesh;
+            return s;
+        }
 
         /// <summary>凸包網格的平面（區域空間，xyz＝外法線、w＝距離），重複的面合併。</summary>
         internal static List<float4> ConvexPlanesOf(Mesh mesh, out Bounds bounds)

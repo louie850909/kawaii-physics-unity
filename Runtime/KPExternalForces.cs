@@ -24,6 +24,10 @@ namespace KawaiiPhysicsUnity
         public List<Transform> applyBoneFilter = new List<Transform>();
         [Tooltip("不受這個力的骨頭")]
         public List<Transform> ignoreBoneFilter = new List<Transform>();
+        [Tooltip("依骨頭名稱：空的話全部骨頭都套用（陣列接口 KPRig 只看名稱的篩選）")]
+        public List<string> applyBoneNameFilter = new List<string>();
+        [Tooltip("依骨頭名稱：不受這個力的骨頭")]
+        public List<string> ignoreBoneNameFilter = new List<string>();
         [Tooltip("力的向量的空間")]
         public KPForceSpace space = KPForceSpace.WorldSpace;
         [Tooltip("每幀在這個範圍內隨機取一個倍率")]
@@ -47,6 +51,25 @@ namespace KawaiiPhysicsUnity
             if (applyBoneFilter.Count > 0 && (bone == null || !applyBoneFilter.Contains(bone))) return false;
             if (ignoreBoneFilter.Count > 0 && bone != null && ignoreBoneFilter.Contains(bone)) return false;
             return true;
+        }
+
+        /// <summary>這個名稱的骨頭會不會受這個力（applyBoneNameFilter 有指定時只限其中、ignoreBoneNameFilter 裡的除外）。</summary>
+        public bool CanApplyToName(string boneName)
+        {
+            if (applyBoneNameFilter.Count > 0 && (boneName == null || !applyBoneNameFilter.Contains(boneName))) return false;
+            if (ignoreBoneNameFilter.Count > 0 && boneName != null && ignoreBoneNameFilter.Contains(boneName)) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// 骨架上的一根骨頭（node＜0＝假骨）會不會受這個力：Transform 的篩選（只有 Transform 版的骨架）與名稱的篩選都要過。
+        /// 名稱只在有名稱篩選時才取（Transform.name 會配置字串）。
+        /// </summary>
+        internal bool CanApplyTo(KPHierarchy hierarchy, int node)
+        {
+            if (hierarchy is KPTransformHierarchy th && !CanApplyTo(node >= 0 ? th.Get(node) : null)) return false;
+            if (applyBoneNameFilter.Count == 0 && ignoreBoneNameFilter.Count == 0) return true;
+            return CanApplyToName(node >= 0 ? hierarchy.Name(node) : null);
         }
 
         /// <summary>算出這一幀的值。回傳 false 表示這一幀不作用。</summary>

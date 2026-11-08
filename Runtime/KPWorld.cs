@@ -1,4 +1,4 @@
-// 把所有 KawaiiPhysicsChain 打包成一組 NativeArray 與 TransformAccessArray。
+// 把所有骨鏈（KPRigChain；場景上的 KawaiiPhysicsChain 每幀把欄位複製進自己的一份）打包成一組 NativeArray 與 TransformAccessArray。
 // 每條 Chain 是一段（KPSegment）：用自己的 Builder 建範本（索引從 0 起算），打包時平移到全域位置。
 // 加入、移除、結構變更只重建那一條的範本；其他段從舊陣列整段搬過去（索引平移），模擬狀態原樣保留。
 // 骨頭的建立照原作 InitModifyBones／AddModifyBone／InsertInterBoneDummyBones／CalcBoneLength／InitBoneConstraints／
@@ -17,7 +17,7 @@ namespace KawaiiPhysicsUnity
     /// <summary>每個 Chain 在主執行緒保留的執行時資料。</summary>
     internal class KPChainRuntime
     {
-        public KawaiiPhysicsChain Chain;
+        public KPRigChain Chain;
         public KPSegment Segment;
         public int InstanceIndex;
         public int ForceCapacity;
@@ -37,7 +37,7 @@ namespace KawaiiPhysicsUnity
         float damping, stiffness, worldDampingLocation, worldDampingRotation, radius, limitAngle;
         int radiusCurveHash;
 
-        public void CaptureSettings(KawaiiPhysicsChain c)
+        public void CaptureSettings(KPRigChain c)
         {
             radiusCurveHash = KPWorld.CurveHash(c.radiusCurve);
             damping = c.damping;
@@ -48,12 +48,12 @@ namespace KawaiiPhysicsUnity
             limitAngle = c.limitAngle;
         }
 
-        public bool SettingsChanged(KawaiiPhysicsChain c) =>
+        public bool SettingsChanged(KPRigChain c) =>
             damping != c.damping || stiffness != c.stiffness || worldDampingLocation != c.worldDampingLocation ||
             worldDampingRotation != c.worldDampingRotation || radius != c.radius || limitAngle != c.limitAngle;
 
         /// <summary>改了半徑（值或依骨長比例的曲線），而且半徑會決定假骨的數量（依半徑加密、橋接假骨）。只在設定變了時呼叫。</summary>
-        public bool RadiusChangedStructurally(KawaiiPhysicsChain c) =>
+        public bool RadiusChangedStructurally(KPRigChain c) =>
             KPWorld.RadiusIsStructural(c) && (radius != c.radius || radiusCurveHash != KPWorld.CurveHash(c.radiusCurve));
     }
 
@@ -84,7 +84,7 @@ namespace KawaiiPhysicsUnity
     /// <summary>一條 Chain 在打包陣列裡的一段。範本的索引從 0 起算。</summary>
     internal sealed class KPSegment
     {
-        public KawaiiPhysicsChain Chain;
+        public KPRigChain Chain;
         public KPChainRuntime Runtime;
         public int Signature;
         /// <summary>共用碰撞的來源時，所屬的家族（同一個根物件＋標籤）。</summary>
@@ -255,17 +255,17 @@ namespace KawaiiPhysicsUnity
         /// 共用碰撞的來源變了，同家族的使用端也重建。其他段保留模擬狀態。
         /// 移除的段把骨頭放回靜止姿勢。
         /// </summary>
-        internal void Sync(List<KawaiiPhysicsChain> chains, Dictionary<int, (Vector3 pos, Quaternion rot)> restCache,
+        internal void Sync(List<KPRigChain> chains, Dictionary<int, (Vector3 pos, Quaternion rot)> restCache,
             Dictionary<int, Vector3> syncRestCache)
         {
             var sw = Stopwatch.StartNew();
-            var present = new HashSet<KawaiiPhysicsChain>();
+            var present = new HashSet<KPRigChain>();
             foreach (var c in chains)
-                if (c != null && c.rootBone != null) present.Add(c);
+                if (c != null && c.rootBone >= 0) present.Add(c);
 
             // 要拿掉的段：Chain 不在了、結構改了（dirty）、共用碰撞的來源變了的使用端
             var removed = new List<KPSegment>();
-            var kept = new HashSet<KawaiiPhysicsChain>();
+            var kept = new HashSet<KPRigChain>();
             var changedFamilies = new HashSet<(int, string)>();
             foreach (var s in Segments)
             {
@@ -496,12 +496,9 @@ namespace KawaiiPhysicsUnity
         }
 
 
-        (int, string) FamilyOf(KawaiiPhysicsChain c) => (Hierarchy.Root(NodeOf(c.ResolveComponent())), c.sharedCollisionTag ?? "");
+        (int, string) FamilyOf(KPRigChain c) => (Hierarchy.Root(c.component), c.sharedCollisionTag ?? "");
 
-        /// <summary>元件上的 Transform 參照 → 節點 id（Transform 版的骨架）。</summary>
-        int NodeOf(Transform t) => transformHierarchy.Id(t);
-
-        void BuildSegment(KPSegment seg, List<KawaiiPhysicsChain> chains, Dictionary<int, (Vector3 pos, Quaternion rot)> restCache,
+        void BuildSegment(KPSegment seg, List<KPRigChain> chains, Dictionary<int, (Vector3 pos, Quaternion rot)> restCache,
             Dictionary<int, Vector3> syncRestCache)
         {
             var chain = seg.Chain;
@@ -509,7 +506,7 @@ namespace KawaiiPhysicsUnity
             {
                 Chain = chain,
                 Segment = seg,
-                Rng = new Unity.Mathematics.Random((uint)chain.GetHashCode() * 2654435761u | 1u),
+                Rng = new Unity.Mathematics.Random((uint)chain.rngSeed * 2654435761u | 1u),
             };
             chain.runtime = rt;
             // 外力的曲線表重新取（曲線改過才會用到新的一格；沒改就是原本那一格）
@@ -812,12 +809,12 @@ namespace KawaiiPhysicsUnity
         // ===================================================================
 
         /// <summary>半徑會決定假骨的數量（依半徑加密、橋接假骨）時，半徑算結構。</summary>
-        internal static bool RadiusIsStructural(KawaiiPhysicsChain c) => c.boneSubdivisionDensifyByRadius || c.boneConstraintSubdivisionCount > 0;
+        internal static bool RadiusIsStructural(KPRigChain c) => c.boneSubdivisionDensifyByRadius || c.boneConstraintSubdivisionCount > 0;
 
-        internal static int ComputeSignature(KawaiiPhysicsChain c)
+        internal static int ComputeSignature(KPRigChain c)
         {
             var h = new HashCode();
-            h.Add(c.ResolveComponent());
+            h.Add(c.component);
             h.Add(c.rootBone);
             foreach (var t in c.excludeBones) h.Add(t);
             foreach (var r in c.additionalRootBones)
@@ -884,10 +881,10 @@ namespace KawaiiPhysicsUnity
             return h.ToHashCode();
         }
 
-        static void AddCollider(ref HashCode h, KawaiiPhysicsCollider col)
+        static void AddCollider(ref HashCode h, KPRigCollider col)
         {
-            h.Add(col);
             if (col == null) return;
+            h.Add(col.bone);
             h.Add(col.shape);
             h.Add(col.center);
             h.Add(col.direction);
@@ -952,18 +949,18 @@ namespace KawaiiPhysicsUnity
             }
         }
 
-        KPInstance BuildInstance(Builder b, KawaiiPhysicsChain chain, KPChainRuntime rt,
-            List<KawaiiPhysicsChain> allChains, Dictionary<int, Vector3> syncRestCache)
+        KPInstance BuildInstance(Builder b, KPRigChain chain, KPChainRuntime rt,
+            List<KPRigChain> allChains, Dictionary<int, Vector3> syncRestCache)
         {
             var h = Hierarchy;
-            var comp = NodeOf(chain.ResolveComponent());
+            var comp = chain.component;
             var inst = KPInstance.Create(Mathf.Max(1, chain.targetFramerate));
             inst.UseFixedSubstep = chain.fixedSubstepping ? 1 : 0;
             inst.MaxSubsteps = chain.maxSubsteps;
             inst.ComponentIndex = b.IndexOf(comp);
             inst.SimulationSpace = (int)chain.simulationSpace;
-            if (chain.simulationSpace == KPSimulationSpace.BaseBoneSpace && chain.simulationBaseBone != null)
-                inst.BaseBoneIndex = b.IndexOf(NodeOf(chain.simulationBaseBone));
+            if (chain.simulationSpace == KPSimulationSpace.BaseBoneSpace && chain.simulationBaseBone >= 0)
+                inst.BaseBoneIndex = b.IndexOf(chain.simulationBaseBone);
             inst.ForwardAxis = (int)chain.boneForwardAxis;
             inst.DummyBoneLength = chain.dummyBoneLength;
             inst.CollisionOnlySubdivision = chain.boneSubdivisionCollisionOnly ? 1 : 0;
@@ -974,17 +971,17 @@ namespace KawaiiPhysicsUnity
 
             // 長度換到模擬空間的單位（元件空間＝除以元件縮放）
             var simScale = chain.simulationSpace == KPSimulationSpace.WorldSpace ? 1f
-                : chain.simulationSpace == KPSimulationSpace.BaseBoneSpace && chain.simulationBaseBone != null
-                    ? h.LossyScaleX(NodeOf(chain.simulationBaseBone)) : h.LossyScaleX(comp);
+                : chain.simulationSpace == KPSimulationSpace.BaseBoneSpace && chain.simulationBaseBone >= 0
+                    ? h.LossyScaleX(chain.simulationBaseBone) : h.LossyScaleX(comp);
             simScale = Mathf.Approximately(simScale, 0f) ? 1f : simScale;
 
             // ---- 骨頭 ----
             inst.BoneStart = b.Bones.Count;
             var worldPos = new List<Vector3>(256); // instance 內每根骨頭建立時的世界位置（長度、約束用）
-            AddRoot(b, chain, NodeOf(chain.rootBone), chain.excludeBones, rt, worldPos, simScale);
+            AddRoot(b, chain, chain.rootBone, chain.excludeBones, rt, worldPos, simScale);
             foreach (var r in chain.additionalRootBones)
-                if (r != null && r.rootBone != null)
-                    AddRoot(b, chain, NodeOf(r.rootBone), r.useOverrideExcludeBones ? r.overrideExcludeBones : chain.excludeBones, rt, worldPos, simScale);
+                if (r != null && r.rootBone >= 0)
+                    AddRoot(b, chain, r.rootBone, r.useOverrideExcludeBones ? r.overrideExcludeBones : chain.excludeBones, rt, worldPos, simScale);
 
             // ---- 骨間約束 ----
             inst.ConstraintStart = b.Constraints.Count;
@@ -1014,7 +1011,7 @@ namespace KawaiiPhysicsUnity
                 {
                     if (other == null || other == chain || !other.sharedCollisionSource) continue;
                     if (other.sharedCollisionTag != chain.sharedCollisionTag) continue;
-                    var otherComp = NodeOf(other.ResolveComponent());
+                    var otherComp = other.component;
                     if (h.Root(otherComp) != h.Root(comp)) continue; // 原作：同一個 attached actor family
                     AddColliders(b, other.colliders);
                     AddLimitsAsset(b, other.limitsAsset, otherComp);
@@ -1047,17 +1044,12 @@ namespace KawaiiPhysicsUnity
 
         // ---- 骨頭（AddModifyBone） ----
 
-        void AddRoot(Builder b, KawaiiPhysicsChain chain, int root, List<Transform> exclude, KPChainRuntime rt,
+        void AddRoot(Builder b, KPRigChain chain, int root, List<int> exclude, KPChainRuntime rt,
             List<Vector3> worldPos, float simScale)
         {
             var start = b.Bones.Count;
             // 排除清單是空的時候不建也不查（走訪是建置裡最花時間的部分）
-            HashSet<int> excludeSet = null;
-            if (exclude != null && exclude.Count > 0)
-            {
-                excludeSet = new HashSet<int>();
-                foreach (var t in exclude) excludeSet.Add(NodeOf(t));
-            }
+            var excludeSet = exclude != null && exclude.Count > 0 ? new HashSet<int>(exclude) : null;
             AddBone(b, chain, root, -1, excludeSet, rt, worldPos, simScale);
 
             // CalcBoneLength：離根長度、總長、比例
@@ -1097,7 +1089,7 @@ namespace KawaiiPhysicsUnity
             ForceMask = uint.MaxValue,
         };
 
-        int AddBone(Builder b, KawaiiPhysicsChain chain, int t, int parent, HashSet<int> exclude, KPChainRuntime rt,
+        int AddBone(Builder b, KPRigChain chain, int t, int parent, HashSet<int> exclude, KPChainRuntime rt,
             List<Vector3> worldPos, float simScale)
         {
             var h = Hierarchy;
@@ -1166,7 +1158,7 @@ namespace KawaiiPhysicsUnity
         static Vector3 AxisVector(KawaiiPhysicsChain.Axis a) => (Vector3)KPMath.ForwardAxis((int)a);
 
         /// <summary>原作 InsertInterBoneDummyBonesCore：父與子之間插入細分假骨（依半徑加密時插更多，每段最多 50）。</summary>
-        static List<int> InsertInterBoneDummies(Builder b, KawaiiPhysicsChain chain, int parentIndex, Vector3 childWorld, float distance,
+        static List<int> InsertInterBoneDummies(Builder b, KPRigChain chain, int parentIndex, Vector3 childWorld, float distance,
             KPChainRuntime rt, List<Vector3> worldPos, out int effectiveParent, out int firstDummy)
         {
             effectiveParent = parentIndex;
@@ -1224,14 +1216,13 @@ namespace KawaiiPhysicsUnity
 
         // ---- 骨間約束（InitBoneConstraints） ----
 
-        void BuildConstraints(Builder b, KawaiiPhysicsChain chain, int boneStart, KPChainRuntime rt, List<Vector3> worldPos,
+        void BuildConstraints(Builder b, KPRigChain chain, int boneStart, KPChainRuntime rt, List<Vector3> worldPos,
             int comp, float simScale)
         {
             int Find(int node) => node < 0 ? -1 : rt.BoneNodes.IndexOf(node);
             var pairs = new List<(int, int, bool, KPComplianceType, bool)>();
             foreach (var c in chain.boneConstraints)
-                pairs.Add((Find(c.bone1 == null ? -1 : NodeOf(c.bone1)), Find(c.bone2 == null ? -1 : NodeOf(c.bone2)),
-                    c.overrideCompliance, c.complianceType, c.excludeFromSubdivision));
+                pairs.Add((Find(c.bone1), Find(c.bone2), c.overrideCompliance, c.complianceType, c.excludeFromSubdivision));
             if (chain.boneConstraintsAsset != null)
             {
                 foreach (var e in chain.boneConstraintsAsset.entries)
@@ -1316,7 +1307,7 @@ namespace KawaiiPhysicsUnity
         }
 
         /// <summary>原作 InsertBridgeDummiesForConstraints：每條橫向約束插入 N 個碰撞代理（放在骨頭陣列最後，沒有縱向的父）。</summary>
-        static void InsertBridgeDummies(Builder b, KawaiiPhysicsChain chain, int boneStart, int constraintStart, int constraintCount,
+        static void InsertBridgeDummies(Builder b, KPRigChain chain, int boneStart, int constraintStart, int constraintCount,
             KPChainRuntime rt, List<Vector3> worldPos, float simScale)
         {
             var n = chain.boneConstraintSubdivisionCount;
@@ -1354,13 +1345,13 @@ namespace KawaiiPhysicsUnity
 
         // ---- SyncBone（InitSyncBones） ----
 
-        void BuildSyncBones(Builder b, KawaiiPhysicsChain chain, int boneStart, KPChainRuntime rt, int comp,
+        void BuildSyncBones(Builder b, KPRigChain chain, int boneStart, KPChainRuntime rt, int comp,
             Dictionary<int, Vector3> syncRestCache)
         {
             foreach (var s in chain.syncBones)
             {
-                if (s == null || s.bone == null) continue;
-                var syncNode = NodeOf(s.bone);
+                if (s == null || s.bone < 0) continue;
+                var syncNode = s.bone;
                 if (!syncRestCache.TryGetValue(syncNode, out var restCS)) restCS = Hierarchy.ComponentSpacePosition(comp, syncNode);
                 var maxDist = s.scaleCurveByDeltaDistance != null && s.scaleCurveByDeltaDistance.length > 0
                     ? s.scaleCurveByDeltaDistance[s.scaleCurveByDeltaDistance.length - 1].time : 0f;
@@ -1380,8 +1371,8 @@ namespace KawaiiPhysicsUnity
                 };
                 foreach (var root in s.targetRoots)
                 {
-                    if (root == null || root.bone == null) continue;
-                    var local = rt.BoneNodes.IndexOf(NodeOf(root.bone));
+                    if (root == null || root.bone < 0) continue;
+                    var local = rt.BoneNodes.IndexOf(root.bone);
                     if (local < 0) continue;
                     // 目標根自己：比例 0
                     b.SyncTargets.Add(new KPSyncTarget { BoneIndex = boneStart + local, Scale = EvalCurve(root.scaleCurveByBoneLengthRate, 0f) });
@@ -1421,12 +1412,12 @@ namespace KawaiiPhysicsUnity
 
         // ---- 碰撞來源 ----
 
-        void AddColliders(Builder b, List<KawaiiPhysicsCollider> colliders)
+        void AddColliders(Builder b, List<KPRigCollider> colliders)
         {
             foreach (var col in colliders)
             {
-                if (col == null) continue;
-                AddShape(b, col.shape, b.IndexOf(NodeOf(col.transform)), col.center, col.shape == KawaiiPhysicsCollider.Shape.Capsule ||
+                if (col == null || col.bone < 0) continue;
+                AddShape(b, col.shape, b.IndexOf(col.bone), col.center, col.shape == KawaiiPhysicsCollider.Shape.Capsule ||
                     col.shape == KawaiiPhysicsCollider.Shape.TaperedCapsule ? col.AxisRotation : Quaternion.identity,
                     col.radius, col.radius1, col.length, col.extent, col.inner, col.convexMesh);
             }

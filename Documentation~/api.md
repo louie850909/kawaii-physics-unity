@@ -6,6 +6,7 @@
 ## 目錄
 
 - 元件：[KawaiiPhysicsAnimationEvents](#kawaiiphysicsanimationevents)、[KawaiiPhysicsChain](#kawaiiphysicschain)、[KawaiiPhysicsChain.Axis](#kawaiiphysicschainaxis)、[KawaiiPhysicsChain.BoneConstraint](#kawaiiphysicschainboneconstraint)、[KawaiiPhysicsChain.RootBoneSetting](#kawaiiphysicschainrootbonesetting)、[KawaiiPhysicsChain.SyncBone](#kawaiiphysicschainsyncbone)、[KawaiiPhysicsChain.SyncTargetRoot](#kawaiiphysicschainsynctargetroot)、[KawaiiPhysicsCollider](#kawaiiphysicscollider)、[KawaiiPhysicsCollider.Axis](#kawaiiphysicscollideraxis)、[KawaiiPhysicsCollider.Shape](#kawaiiphysicscollidershape)、[KawaiiPhysicsSoftBody](#kawaiiphysicssoftbody)、[KawaiiPhysicsSoftBody.Axis](#kawaiiphysicssoftbodyaxis)
+- 陣列接口：[KPRigChain](#kprigchain)、[KPRigChain.BoneConstraint](#kprigchainboneconstraint)、[KPRigChain.RootBoneSetting](#kprigchainrootbonesetting)、[KPRigChain.SyncBone](#kprigchainsyncbone)、[KPRigChain.SyncTargetRoot](#kprigchainsynctargetroot)、[KPRigCollider](#kprigcollider)、[KPRigSoftBody](#kprigsoftbody)
 - 資產：[KawaiiPhysicsConstraintsAsset](#kawaiiphysicsconstraintsasset)、[KawaiiPhysicsConstraintsAsset.Entry](#kawaiiphysicsconstraintsassetentry)、[KawaiiPhysicsConstraintsAsset.RegexPair](#kawaiiphysicsconstraintsassetregexpair)、[KawaiiPhysicsEventPreset](#kawaiiphysicseventpreset)、[KawaiiPhysicsEventPreset.Kind](#kawaiiphysicseventpresetkind)、[KawaiiPhysicsLimitsAsset](#kawaiiphysicslimitsasset)、[KawaiiPhysicsLimitsAsset.Entry](#kawaiiphysicslimitsassetentry)、[KawaiiPhysicsPreset](#kawaiiphysicspreset)、[KawaiiPhysicsPreset.Data](#kawaiiphysicspresetdata)、[KawaiiPhysicsWindChannel](#kawaiiphysicswindchannel)
 - 外力：[KPCurveEvaluateType](#kpcurveevaluatetype)、[KPExternalForce](#kpexternalforce)、[KPForceBasic](#kpforcebasic)、[KPForceCurve](#kpforcecurve)、[KPForceGravity](#kpforcegravity)、[KPForceProceduralWind](#kpforceproceduralwind)、[KPForceSpace](#kpforcespace)、[KPForceWind](#kpforcewind)、[KPProceduralWindParams](#kpproceduralwindparams)、[KPProceduralWindState](#kpproceduralwindstate)、[KPWindSource](#kpwindsource)
 - 系統與設定：[KPBackend](#kpbackend)、[KPComplianceType](#kpcompliancetype)、[KPPlanarConstraint](#kpplanarconstraint)、[KPSettings](#kpsettings)、[KPSettingsMultiplier](#kpsettingsmultiplier)、[KPSimulationSpace](#kpsimulationspace)、[KPSyncDirection](#kpsyncdirection)、[KPSystem](#kpsystem)、[KPTeleportType](#kpteleporttype)
@@ -93,8 +94,8 @@
 | `enableWind` | field | `Boolean` | 場景的 WindZone 會吹動 |
 | `windScale` | field | `Single` | 場景風（WindZone）的強度倍率 |
 | `windDirectionNoiseAngle` | field | `Single` | 場景風的方向每幀隨機偏移的最大角度（度） |
-| `externalForces` | field | `List<KPExternalForce>` | 場景風的方向每幀隨機偏移的最大角度（度） |
-| `syncBones` | field | `List<SyncBone>` | 場景風的方向每幀隨機偏移的最大角度（度） |
+| `externalForces` | field | `List<KPExternalForce>` | 外力（五種，可以多個） |
+| `syncBones` | field | `List<SyncBone>` | SyncBone：來源骨頭的移動推動目標骨頭 |
 | `preset` | field | `KawaiiPhysicsPreset` | 啟用時把這個預設的設定套到這條鏈 |
 | `MaxTransientExternalForces` | const | `Int32` | 同時存在的暫時外力（RequestTransientExternalForce、RequestTransientGust）上限。 |
 | `MaxPhysicsSettingsMultipliers` | const | `Int32` | 同時存在的設定倍率（StartSettingsMultiplier）上限。 |
@@ -193,7 +194,7 @@
 | `radius` | field | `Single` | 半徑（公尺）；錐形膠囊是 +軸端的半徑 |
 | `radius1` | field | `Single` | 錐形膠囊 -軸端的半徑（+軸端用 radius） |
 | `length` | field | `Single` | 膠囊兩端球心之間的長度 |
-| `extent` | field | `Vector3` | 膠囊兩端球心之間的長度 |
+| `extent` | field | `Vector3` | 箱的半邊長 |
 | `inner` | field | `Boolean` | 球限定：勾選時把骨頭關在球裡，不勾是往外推 |
 | `convexMesh` | field | `Mesh` | 凸包：用這個網格的三角形面當平面（網格要是凸的） |
 | `.ctor` | constructor | `()` | 預設建構子。 |
@@ -273,6 +274,199 @@
 | `Y` | value | `Axis` | 區域 Y 軸 |
 | `Z` | value | `Axis` | 區域 Z 軸 |
 
+## 陣列接口
+
+### KPRigChain
+
+*class* — 一條骨鏈的設定（陣列接口用）。欄位與 KawaiiPhysicsChain 相同，骨頭參照是骨架的索引（-1＝沒有）。 執行時的操作（暫時外力、設定倍率、ResetDynamics）也跟元件一樣。KawaiiPhysicsChain 每幀把欄位複製進自己持有的一份，套件內部只有這一條流程。
+
+| 成員 | 種類 | 型別／簽章 | 說明 |
+|---|---|---|---|
+| `rootBone` | field | `Int32` | 模擬的起點骨頭；它底下的骨頭（排除清單以外）全部模擬。起點骨頭本身跟著動畫（骨架的索引；-1＝沒有） |
+| `excludeBones` | field | `List<Int32>` | 不模擬的骨頭（連同它底下的骨頭）（骨架的索引） |
+| `additionalRootBones` | field | `List<RootBoneSetting>` | 其他的起點骨頭（例如左右兩束頭髮放在同一個元件）；可以各自指定排除清單 |
+| `dummyBoneLength` | field | `Single` | 末端假骨的長度（公尺）；0 表示不加。末端骨頭沒有子骨頭時，要靠它才會轉 |
+| `boneForwardAxis` | field | `Axis` | 骨頭的前方軸，只用在末端假骨的方向 |
+| `component` | field | `Int32` | 元件（角色根）。不指定時用上層的 Animator，再沒有就用自己（骨架的索引；-1＝沒有） |
+| `boneSubdivisionCount` | field | `Int32` | 相鄰骨頭之間至少插入幾個假骨（改善碰撞，例如裙子穿腿） |
+| `boneSubdivisionCollisionOnly` | field | `Boolean` | 插入的假骨只參加碰撞與約束，不做速度積分 |
+| `boneSubdivisionDensifyByRadius` | field | `Boolean` | 依半徑加密：骨頭間距比半徑大的地方插更多（每段最多 50） |
+| `boneConstraintSubdivisionCount` | field | `Int32` | 每條橫向骨間約束插入幾個碰撞代理（填補相鄰兩列之間的縫） |
+| `boneConstraintSubdivisionFeedbackScale` | field | `Single` | 每條橫向骨間約束插入幾個碰撞代理（填補相鄰兩列之間的縫） |
+| `damping` | field | `Single` | 阻尼：每步速度保留 1−damping，越大越快停下 |
+| `stiffness` | field | `Single` | 阻尼：每步速度保留 1−damping，越大越快停下 |
+| `worldDampingLocation` | field | `Single` | 阻尼：每步速度保留 1−damping，越大越快停下 |
+| `worldDampingRotation` | field | `Single` | 阻尼：每步速度保留 1−damping，越大越快停下 |
+| `radius` | field | `Single` | 阻尼：每步速度保留 1−damping，越大越快停下 |
+| `limitAngle` | field | `Single` | 阻尼：每步速度保留 1−damping，越大越快停下 |
+| `planarConstraint` | field | `KPPlanarConstraint` | 阻尼：每步速度保留 1−damping，越大越快停下 |
+| `alpha` | field | `Single` | 物理結果與動畫姿勢的混合比例（0＝只有動畫、1＝完全物理） |
+| `dampingCurve` | field | `AnimationCurve` | damping 依骨長比例（根 0 → 末端 1）乘上的倍率；沒有關鍵格時是 1 |
+| `stiffnessCurve` | field | `AnimationCurve` | stiffness 依骨長比例（根 0 → 末端 1）乘上的倍率；沒有關鍵格時是 1 |
+| `worldDampingLocationCurve` | field | `AnimationCurve` | worldDampingLocation 依骨長比例乘上的倍率；沒有關鍵格時是 1 |
+| `worldDampingRotationCurve` | field | `AnimationCurve` | worldDampingRotation 依骨長比例乘上的倍率；沒有關鍵格時是 1 |
+| `radiusCurve` | field | `AnimationCurve` | radius 依骨長比例乘上的倍率；沒有關鍵格時是 1 |
+| `limitAngleCurve` | field | `AnimationCurve` | limitAngle 依骨長比例乘上的倍率；沒有關鍵格時是 1 |
+| `simulationSpace` | field | `KPSimulationSpace` | 模擬空間：元件空間（跟著角色，預設）、世界空間、基準骨空間 |
+| `simulationBaseBone` | field | `Int32` | simulationSpace＝BaseBoneSpace 時的基準骨頭（骨架的索引；-1＝沒有） |
+| `targetFramerate` | field | `Int32` | 模擬的步頻（每秒步數）；固定子步進時每步是 1/targetFramerate 秒 |
+| `fixedSubstepping` | field | `Boolean` | 用固定時間的子步進（幀率變動時結果穩定）；關閉時每幀一步 |
+| `maxSubsteps` | field | `Int32` | 一幀最多幾個子步進（掉幀時不會無限追趕） |
+| `skelCompMoveScale` | field | `Vector3` | 一幀最多幾個子步進（掉幀時不會無限追趕） |
+| `teleportDistanceThreshold` | field | `Single` | 角色一幀移動超過這個距離（公尺）就當成瞬移、物理重新開始；0＝不偵測 |
+| `teleportRotationThreshold` | field | `Single` | 角色一幀移動超過這個距離（公尺）就當成瞬移、物理重新開始；0＝不偵測 |
+| `warmUpFrames` | field | `Int32` | 開始時空跑幾幀，讓物理先穩定 |
+| `needWarmUp` | field | `Boolean` | 開始時空跑幾幀，讓物理先穩定 |
+| `useWarmUpWhenResetDynamics` | field | `Boolean` | ResetDynamics 之後先暖機 warmUpFrames 幀 |
+| `colliders` | field | `List<KPRigCollider>` | 跟這條鏈碰撞的碰撞體 |
+| `limitsAsset` | field | `KawaiiPhysicsLimitsAsset` | 碰撞資產（用骨頭名稱指定的一組碰撞形狀） |
+| `sharedCollisionSource` | field | `Boolean` | 把自己的碰撞體提供給同一角色底下、同一標籤的其他 Chain |
+| `useSharedCollision` | field | `Boolean` | 使用同一角色底下、同一標籤的其他 Chain 提供的碰撞體 |
+| `sharedCollisionTag` | field | `String` | 共用碰撞的標籤：同一個根物件底下、標籤相同的來源與使用端才共用 |
+| `boneConstraints` | field | `List<BoneConstraint>` | 骨間約束：兩根骨頭之間維持建立時的距離（例如裙子相鄰的兩條） |
+| `boneConstraintsAsset` | field | `KawaiiPhysicsConstraintsAsset` | 骨間約束資產（用骨頭名稱指定） |
+| `boneConstraintGlobalComplianceType` | field | `KPComplianceType` | 骨間約束預設的柔軟度（約束沒有個別指定時用） |
+| `boneConstraintIterationCountBeforeCollision` | field | `Int32` | 碰撞之前解約束的次數 |
+| `boneConstraintIterationCountAfterCollision` | field | `Int32` | 碰撞之前解約束的次數 |
+| `autoAddChildDummyBoneConstraint` | field | `Boolean` | 碰撞之前解約束的次數 |
+| `allowWorldCollision` | field | `Boolean` | 跟場景的 Physics 碰撞體碰撞（每幀用球掃掠） |
+| `worldCollisionLayers` | field | `LayerMask` | 世界碰撞要碰的圖層 |
+| `useSimpleWorldCollision` | field | `Boolean` | 簡易世界碰撞：定期收集附近的簡單碰撞體（球、膠囊、箱、網格的包圍盒）與地面，不做掃掠 |
+| `simpleWorldCollisionGatherInterval` | field | `Single` | 多久重新收集一次附近的碰撞體（秒） |
+| `simpleWorldCollisionGatherRadius` | field | `Single` | 多久重新收集一次附近的碰撞體（秒） |
+| `simpleWorldCollisionLayers` | field | `LayerMask` | 多久重新收集一次附近的碰撞體（秒） |
+| `simpleWorldCollisionGroundCollision` | field | `Boolean` | 往下打一條射線，把地面當成薄箱子 |
+| `simpleWorldCollisionMaxShapes` | field | `Int32` | 每種形狀最多收集幾個 |
+| `gravity` | field | `Vector3` | 重力（m/s²）。原作預設是 0 |
+| `useWorldSpaceGravity` | field | `Boolean` | gravity 是世界空間的向量（關閉時是元件空間） |
+| `useLegacyGravity` | field | `Boolean` | 原作 legacy：把 0.5·g·dt² 直接加到位置 |
+| `simpleExternalForce` | field | `Vector3` | 固定的外力（加速度，公尺／秒²） |
+| `useWorldSpaceSimpleExternalForce` | field | `Boolean` | simpleExternalForce 是世界空間的向量（關閉時是元件空間） |
+| `enableWind` | field | `Boolean` | 場景的 WindZone 會吹動 |
+| `windScale` | field | `Single` | 場景風（WindZone）的強度倍率 |
+| `windDirectionNoiseAngle` | field | `Single` | 場景風的方向每幀隨機偏移的最大角度（度） |
+| `externalForces` | field | `List<KPExternalForce>` | 外力（五種，可以多個） |
+| `syncBones` | field | `List<SyncBone>` | SyncBone：來源骨頭的移動推動目標骨頭 |
+| `MarkDirty` | method | `Void MarkDirty()` | 結構改了（骨頭、碰撞體、約束、SyncBone、模擬空間等），下一幀重建這一條（只有它的模擬狀態重置，其他 Chain 不受影響）。 damping、stiffness、worldDamping、radius、limitAngle 的值會自動偵測，不用呼叫這個。 |
+| `MarkSettingsDirty` | method | `Void MarkSettingsDirty()` | 改了依骨長比例的曲線（dampingCurve 等）、外力的骨頭篩選或 forceRateByBoneLengthRate 之後呼叫： 下一幀就地更新，不重建、不重置。例外：依半徑加密細分或有橋接假骨時，改了 radiusCurve 會改變假骨數量，這時重建這一條。 |
+| `EvaluateSettings` | method | `KPSettings EvaluateSettings(Single lengthRate)` | 依骨長比例算出的基本設定（還沒夾範圍；倍率在每幀的工作裡乘）。 |
+| `ResetDynamics` | method | `Void ResetDynamics(KPTeleportType type = Reset)` | 原作 ResetDynamics。 |
+| `RequestTransientExternalForce` | method | `Int64 RequestTransientExternalForce(KPExternalForce force, Single lifetime)` | 加一個暫時外力，lifetime 秒後移除。回傳停止用的 handle。 |
+| `RequestTransientGust` | method | `Int64 RequestTransientGust(Single strength, Single riseTime, Single decayTime, Vector3 direction = null, Int32 inheritForceIndex = -1, Single holdTime = 0, Boolean realTimeEnvelope = False)` | 原作 RequestTransientGust：以某個程序風為底（inheritForceIndex；-1 找第一個啟用中的）產生一陣突風。 direction 非零時用世界空間的這個方向。 |
+| `RequestStopTransientExternalForce` | method | `Void RequestStopTransientExternalForce(Int64 handle, Single blendOutTime)` | 原作 RequestStopTransientExternalForce：blendOut 秒內淡出（程序風是讓突風落到 0）。 |
+| `StartSettingsMultiplier` | method | `Int64 StartSettingsMultiplier(KPSettingsMultiplier scale, Single riseTime, Single holdTime, Single decayTime, Boolean infiniteHold = False)` | 原作 RequestStartPhysicsSettingsMultiplier：起、持、落的包絡；infiniteHold 時持續到停止。 |
+| `PushSettingsMultiplier` | method | `Void PushSettingsMultiplier(Int64 handle, KPSettingsMultiplier scale, Single pushAlpha, Int32 leaseEvaluations = 0, Single leaseExpireBlendOut = 0.2)` | 原作 RequestPushPhysicsSettingsMultiplier：由外部每幀推送強度（alpha）。 leaseEvaluations＞0 時，這麼多幀沒推送就在 leaseExpireBlendOut 秒內淡出。 |
+| `StopSettingsMultiplier` | method | `Void StopSettingsMultiplier(Int64 handle, Single blendOutTime)` | 原作 RequestStopPhysicsSettingsMultiplier。 |
+| `enabled` | field | `Boolean` | 模擬中（停用時骨頭維持動畫姿勢；元件版對應 isActiveAndEnabled） |
+| `.ctor` | constructor | `()` | 預設建構子。 |
+| `TransientForceCount` | property | `Int32 { get; }` | 目前有效的暫時外力數。 |
+| `SettingsMultiplierCount` | property | `Int32 { get; }` | 目前有效的設定倍率數。 |
+
+### KPRigChain.RootBoneSetting
+
+*class* — 額外的起點骨頭（陣列接口用）。欄位與 KawaiiPhysicsChain.RootBoneSetting 相同，骨頭是骨架的索引。
+
+| 成員 | 種類 | 型別／簽章 | 說明 |
+|---|---|---|---|
+| `rootBone` | field | `Int32` | 起點骨頭（骨架的索引；-1＝沒有） |
+| `useOverrideExcludeBones` | field | `Boolean` | 用自己的排除清單（不用元件的 excludeBones） |
+| `overrideExcludeBones` | field | `List<Int32>` | 這個起點用的排除清單（骨架的索引） |
+| `.ctor` | constructor | `()` | 預設建構子。 |
+
+### KPRigChain.BoneConstraint
+
+*class* — 骨間約束（陣列接口用）。欄位與 KawaiiPhysicsChain.BoneConstraint 相同，骨頭是骨架的索引。
+
+| 成員 | 種類 | 型別／簽章 | 說明 |
+|---|---|---|---|
+| `bone1` | field | `Int32` | 約束的第一根骨頭（骨架的索引；-1＝沒有） |
+| `bone2` | field | `Int32` | 約束的第二根骨頭（骨架的索引；-1＝沒有） |
+| `overrideCompliance` | field | `Boolean` | 用這條約束自己的柔軟度（不用全域預設） |
+| `complianceType` | field | `KPComplianceType` | 這條約束的柔軟度 |
+| `excludeFromSubdivision` | field | `Boolean` | 這條約束不插入橋接假骨 |
+| `.ctor` | constructor | `()` | 預設建構子。 |
+
+### KPRigChain.SyncBone
+
+*class* — SyncBone（陣列接口用）。欄位與 KawaiiPhysicsChain.SyncBone 相同，骨頭是骨架的索引。
+
+| 成員 | 種類 | 型別／簽章 | 說明 |
+|---|---|---|---|
+| `bone` | field | `Int32` | 來源骨頭（例：大腿）（骨架的索引；-1＝沒有） |
+| `targetRoots` | field | `List<SyncTargetRoot>` | 被推動的骨頭 |
+| `globalScale` | field | `Vector3` | 推動量各軸的倍率 |
+| `scaleCurveByDeltaDistance` | field | `AnimationCurve` | 依移動距離（公尺）乘上的倍率 |
+| `applyDirectionX` | field | `KPSyncDirection` | X 軸只套用正向、負向、兩者或不套用 |
+| `applyDirectionY` | field | `KPSyncDirection` | Y 軸只套用正向、負向、兩者或不套用 |
+| `applyDirectionZ` | field | `KPSyncDirection` | Z 軸只套用正向、負向、兩者或不套用 |
+| `enableDistanceAttenuation` | field | `Boolean` | 依目標骨頭與來源骨頭的距離衰減 |
+| `attenuationInnerRadius` | field | `Single` | 距離小於這個值不衰減（公尺） |
+| `attenuationOuterRadius` | field | `Single` | 距離大於這個值衰減到 maxAttenuationRate（公尺） |
+| `maxAttenuationRate` | field | `Single` | 最遠處的衰減比例 |
+| `.ctor` | constructor | `()` | 預設建構子。 |
+
+### KPRigChain.SyncTargetRoot
+
+*class* — SyncBone 推動的目標（陣列接口用）。欄位與 KawaiiPhysicsChain.SyncTargetRoot 相同，骨頭是骨架的索引。
+
+| 成員 | 種類 | 型別／簽章 | 說明 |
+|---|---|---|---|
+| `bone` | field | `Int32` | 目標骨頭（骨架的索引；-1＝沒有） |
+| `includeChildBones` | field | `Boolean` | 連子骨頭一起推動 |
+| `scaleCurveByBoneLengthRate` | field | `AnimationCurve` | 依骨長比例乘上的倍率 |
+| `.ctor` | constructor | `()` | 預設建構子。 |
+
+### KPRigCollider
+
+*class* — 碰撞體的設定（陣列接口用）：欄位與 KawaiiPhysicsCollider 相同，跟著的骨頭改成骨架的索引 bone。
+
+| 成員 | 種類 | 型別／簽章 | 說明 |
+|---|---|---|---|
+| `bone` | field | `Int32` | 跟著的骨頭（骨架的索引）；-1＝沒有 |
+| `shape` | field | `Shape` | 形狀 |
+| `center` | field | `Vector3` | 中心（這個 Transform 區域空間的偏移） |
+| `direction` | field | `Axis` | 膠囊、錐形膠囊的軸 |
+| `radius` | field | `Single` | 半徑（公尺）；錐形膠囊是 +軸端的半徑 |
+| `radius1` | field | `Single` | 錐形膠囊 -軸端的半徑（+軸端用 radius） |
+| `length` | field | `Single` | 膠囊兩端球心之間的長度 |
+| `extent` | field | `Vector3` | 箱的半邊長 |
+| `inner` | field | `Boolean` | 球限定：勾選時把骨頭關在球裡，不勾是往外推 |
+| `convexMesh` | field | `Mesh` | 凸包：用這個網格的三角形面當平面（網格要是凸的） |
+| `.ctor` | constructor | `()` | 預設建構子。 |
+| `AxisRotation` | property | `Quaternion { get; }` | 把區域 +Y 轉到 direction 軸的旋轉。 |
+
+### KPRigSoftBody
+
+*class* — 一組軟組織骨頭的設定（陣列接口用）。欄位與 KawaiiPhysicsSoftBody 相同，骨頭參照是骨架的索引（-1＝沒有）。
+
+| 成員 | 種類 | 型別／簽章 | 說明 |
+|---|---|---|---|
+| `bones` | field | `List<Int32>` | 要模擬的骨頭，各自是一個彈簧。祖先也是軟組織骨頭時（不論是不是同一個元件），子骨的錨點跟著祖先的位移與伸縮，也感受祖先晃動的慣性（骨架的索引） |
+| `referenceRoot` | field | `Int32` | 角色根（慣性拆成角色移動與動畫、重力參考用）；空的話用上層的 Animator，再沒有就用自己。站立時 +Y 要朝上（骨架的索引；-1＝沒有） |
+| `frequency` | field | `Single` | 振動頻率（Hz）：無阻尼時每秒來回幾次。越大越硬 |
+| `dampingRatio` | field | `Single` | 阻尼比：0＝不衰減、1＝臨界阻尼（不回彈）、大於 1＝過阻尼 |
+| `gravity` | field | `Vector3` | 重力加速度（世界空間，公尺/秒²）。平衡時的下垂量＝重力 ÷ (2π×頻率)² |
+| `gravityRelativeToRestPose` | field | `Boolean` | 重力相對靜止姿勢：站立時的形狀已經包含重力，只有姿勢偏離站立（躺、趴、倒立）時才往重力方向偏 |
+| `externalAcceleration` | field | `Vector3` | 額外的加速度（世界空間，公尺/秒²），應用端可以每幀改 |
+| `animationInertia` | field | `Single` | 動畫造成的錨點加減速的慣性倍率（0＝跟著動畫走、不晃；1＝真實慣性）。祖先軟組織骨頭的晃動不受這個影響，一律是真實慣性 |
+| `movementInertia` | field | `Single` | 角色根移動、轉向造成的慣性倍率（0＝跟著角色走、不晃；1＝真實慣性） |
+| `limitMin` | field | `Vector3` | 各軸往負方向最多離開錨點多遠（≤0；0＝鎖住這個方向） |
+| `limitMax` | field | `Vector3` | 各軸往正方向最多離開錨點多遠（≥0；0＝鎖住這個方向） |
+| `tilt` | field | `Single` | 依位移傾斜：骨頭朝『父骨 → 位移後的位置』轉動的比例（0＝只平移） |
+| `stretchAxis` | field | `Axis` | 壓扁與拉伸的軸（骨頭區域） |
+| `stretchAmount` | field | `Single` | 沿軸位移到上限時伸長的比例（負值＝反向；0＝不縮放）。子骨頭跟著縮放（子軟組織骨頭的位置會跟著伸縮移動），建議只用在末端骨頭 |
+| `volumePreservation` | field | `Single` | 維持體積：沿軸伸長時另外兩軸縮小的程度（1＝體積不變） |
+| `radius` | field | `Single` | 骨頭的碰撞半徑（公尺） |
+| `colliders` | field | `List<KPRigCollider>` | 碰撞體（球、膠囊、錐形膠囊、箱、平面；凸包不支援）。清單每幀讀取，增減不用重建 |
+| `collisionPriority` | field | `Boolean` | 碰撞優先：碰撞體壓過來時骨頭可以被推到位移上限之外（不穿透）。關掉時位移上限優先（碰撞體可能穿進骨頭） |
+| `alpha` | field | `Single` | 物理結果的混合比例（0＝完全照動畫）。它是動畫與物理的混合比例、不是力：改了（一次跳或漸變）時子孫軟組織骨頭不把因此的移動當成加速；祖先真的晃動照常傳下去 |
+| `targetFramerate` | field | `Int32` | 子步進的步頻（每秒步數）。彈簧本身是解析解，子步進只影響碰撞與位移上限的精度 |
+| `maxSubsteps` | field | `Int32` | 每幀最多幾個子步進 |
+| `teleportDistanceThreshold` | field | `Single` | 角色根一幀移動超過這個距離（公尺）就當成瞬移、重置（0＝不判定） |
+| `teleportRotationThreshold` | field | `Single` | 角色根一幀轉動超過這個角度（度）就當成瞬移、重置（0＝不判定） |
+| `enabled` | field | `Boolean` | 模擬中（停用時骨頭維持動畫姿勢；元件版對應 isActiveAndEnabled） |
+| `.ctor` | constructor | `()` | 預設建構子。 |
+
 ## 資產
 
 ### KawaiiPhysicsConstraintsAsset
@@ -332,6 +526,7 @@
 | `softBodyImpulse` | field | `Vector3` | 速度變化（公尺/秒），角色根（SoftBody 的 referenceRoot）的區域空間；例：(0,-0.6,0)＝往下一頓 |
 | `softBodyNameFilter` | field | `String` | 空的話作用到全部 SoftBody；否則只作用到名稱含這個字串的 |
 | `Apply` | method | `Void Apply(KawaiiPhysicsChain chain)` | 把這個事件套到一條鏈。 |
+| `Apply` | method | `Void Apply(KPRigChain chain)` | 把這個事件套到陣列接口的一條鏈。 |
 | `Apply` | method | `Void Apply(KawaiiPhysicsSoftBody softBody)` | 把這個事件套到一個軟組織元件（只有 SoftBodyImpulse 有作用）。 |
 | `.ctor` | constructor | `()` | 預設建構子。 |
 
@@ -388,6 +583,8 @@
 | `data` | field | `Data` | 預設的設定值 |
 | `ApplyTo` | method | `Void ApplyTo(KawaiiPhysicsChain chain)` | 把設定套到 chain。只改了設定就在下一幀就地更新（不重置），改到結構（骨頭細分等）才重建這一條。 |
 | `CaptureFrom` | method | `Void CaptureFrom(KawaiiPhysicsChain chain)` | 把 chain 目前的設定記到這個預設。 |
+| `ApplyTo` | method | `Void ApplyTo(KPRigChain chain)` | 把設定套到陣列接口的 chain（欄位名稱相同）。只改了設定就就地更新，改到結構才重建這一條。 |
+| `CaptureFrom` | method | `Void CaptureFrom(KPRigChain chain)` | 把陣列接口的 chain 目前的設定記到這個預設。 |
 | `.ctor` | constructor | `()` | 預設建構子。 |
 
 ### KawaiiPhysicsPreset.Data
@@ -457,11 +654,14 @@
 | `enabled` | field | `Boolean` | 啟用 |
 | `applyBoneFilter` | field | `List<Transform>` | 空的話全部骨頭都套用 |
 | `ignoreBoneFilter` | field | `List<Transform>` | 不受這個力的骨頭 |
+| `applyBoneNameFilter` | field | `List<String>` | 依骨頭名稱：空的話全部骨頭都套用（陣列接口 KPRig 只看名稱的篩選） |
+| `ignoreBoneNameFilter` | field | `List<String>` | 依骨頭名稱：不受這個力的骨頭 |
 | `space` | field | `KPForceSpace` | 力的向量的空間 |
 | `randomForceScaleRange` | field | `Vector2` | 每幀在這個範圍內隨機取一個倍率 |
 | `forceRateByBoneLengthRate` | field | `AnimationCurve` | 依骨長比例（根 0、末端 1）乘上的倍率；沒有 key 視為 1 |
 | `oneShot` | field | `Boolean` | 只作用一幀就移除 |
 | `CanApplyTo` | method | `Boolean CanApplyTo(Transform bone)` | 這根骨頭會不會受這個力（applyBoneFilter 有指定時只限其中、ignoreBoneFilter 裡的除外）。 |
+| `CanApplyToName` | method | `Boolean CanApplyToName(String boneName)` | 這個名稱的骨頭會不會受這個力（applyBoneNameFilter 有指定時只限其中、ignoreBoneNameFilter 裡的除外）。 |
 | `CloneForTransient` | method | `KPExternalForce CloneForTransient()` | 複製一份（暫時外力用，不跟原本的共用狀態）。 |
 
 ### KPForceBasic
