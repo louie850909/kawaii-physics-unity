@@ -21,8 +21,8 @@ namespace KawaiiPhysicsUnity
         public KPSegment Segment;
         public int InstanceIndex;
         public int ForceCapacity;
-        /// <summary>每根骨頭（instance 內的順序）的 Transform；假骨是 null。外力的骨頭篩選用。</summary>
-        public List<Transform> BoneTransforms = new List<Transform>(256);
+        /// <summary>每根骨頭（instance 內的順序）的節點 id；假骨是 -1。外力的骨頭篩選、約束與 SyncBone 找骨頭用。</summary>
+        public List<int> BoneNodes = new List<int>(256);
         public readonly List<KPExternalForce> PackedForces = new List<KPExternalForce>();
         public readonly List<KPExternalForce> LastMaskForces = new List<KPExternalForce>();
         // 簡易世界碰撞
@@ -89,12 +89,13 @@ namespace KawaiiPhysicsUnity
         public int Signature;
         /// <summary>共用碰撞的來源時，所屬的家族（同一個根物件＋標籤）。</summary>
         public bool IsSharedSource;
-        public (Transform root, string tag) Family;
+        public (int root, string tag) Family;
 
-        // 範本（放進打包陣列之後就放掉，只留 Transform 與靜止姿勢）
+        // 範本（放進打包陣列之後就放掉，只留節點與靜止姿勢）
         public KPInstance Instance;
         public KPWorld.Builder Template;
-        public Transform[] Transforms;
+        /// <summary>範本的 Transform 索引 → 節點 id。</summary>
+        public int[] Nodes;
         /// <summary>靜止姿勢（範本的 Transform 索引、區域位置、區域旋轉）。</summary>
         public (int index, Vector3 pos, Quaternion rot)[] Rest;
         public KPOffsets Size;
@@ -107,14 +108,11 @@ namespace KawaiiPhysicsUnity
         public bool PlacedThisSync;
 
         /// <summary>骨頭放回靜止姿勢（停用、移除、重建結構前）。</summary>
-        public void RestoreRestPose()
+        public void RestoreRestPose(KPHierarchy hierarchy)
         {
             if (Rest == null) return;
             foreach (var (index, pos, rot) in Rest)
-            {
-                var t = Transforms[index];
-                if (t != null) t.SetLocalPositionAndRotation(pos, rot);
-            }
+                hierarchy.SetLocalPositionAndRotation(Nodes[index], pos, rot);
         }
     }
 
@@ -136,6 +134,16 @@ namespace KawaiiPhysicsUnity
         public NativeArray<float> Luts;
         public NativeArray<KPWindZone> WindZones;
         public int WindZoneCount;
+        /// <summary>骨頭的來源（節點 id 由它解讀）。</summary>
+        public readonly KPHierarchy Hierarchy;
+        /// <summary>Transform 版的骨架才有 TransformAccessArray。</summary>
+        readonly KPTransformHierarchy transformHierarchy;
+
+        public KPWorld(KPHierarchy hierarchy)
+        {
+            Hierarchy = hierarchy;
+            transformHierarchy = hierarchy as KPTransformHierarchy;
+        }
         public NativeArray<KPReadPose> Reads;
         public NativeArray<KPWriteLocal> Writes;
         public NativeArray<KPWriteLocal> Rest;
@@ -247,8 +255,8 @@ namespace KawaiiPhysicsUnity
         /// 共用碰撞的來源變了，同家族的使用端也重建。其他段保留模擬狀態。
         /// 移除的段把骨頭放回靜止姿勢。
         /// </summary>
-        internal void Sync(List<KawaiiPhysicsChain> chains, Dictionary<Transform, (Vector3 pos, Quaternion rot)> restCache,
-            Dictionary<Transform, Vector3> syncRestCache)
+        internal void Sync(List<KawaiiPhysicsChain> chains, Dictionary<int, (Vector3 pos, Quaternion rot)> restCache,
+            Dictionary<int, Vector3> syncRestCache)
         {
             var sw = Stopwatch.StartNew();
             var present = new HashSet<KawaiiPhysicsChain>();
@@ -258,7 +266,7 @@ namespace KawaiiPhysicsUnity
             // 要拿掉的段：Chain 不在了、結構改了（dirty）、共用碰撞的來源變了的使用端
             var removed = new List<KPSegment>();
             var kept = new HashSet<KawaiiPhysicsChain>();
-            var changedFamilies = new HashSet<(Transform, string)>();
+            var changedFamilies = new HashSet<(int, string)>();
             foreach (var s in Segments)
             {
                 if (!present.Contains(s.Chain) || s.Chain.dirty)
@@ -284,13 +292,13 @@ namespace KawaiiPhysicsUnity
             foreach (var s in removed)
             {
                 // 骨頭放回靜止姿勢（元件停用時不要停在物理的姿勢；重建結構時從靜止姿勢重算）
-                s.RestoreRestPose();
+                s.RestoreRestPose(Hierarchy);
                 // 已刪除的 Transform 從快取拿掉（角色反覆生成、刪除時快取不會一直長）
-                foreach (var t in s.Transforms)
+                foreach (var node in s.Nodes)
                 {
-                    if (t != null) continue;
-                    restCache.Remove(t);
-                    syncRestCache.Remove(t);
+                    if (Hierarchy.IsAlive(node)) continue;
+                    restCache.Remove(node);
+                    syncRestCache.Remove(node);
                 }
                 ClearRegion(s);
                 holes.Add((s.At, s.Size));
@@ -395,14 +403,18 @@ namespace KawaiiPhysicsUnity
 
             CopyTemplate(s, at);
 
-            var taStart = Stopwatch.GetTimestamp();
-            for (int k = 0; k < s.Transforms.Length; k++)
+            if (transformHierarchy != null)
             {
-                var index = at.Transform + k;
-                if (index < Transforms.length) Transforms[index] = s.Transforms[k];
-                else Transforms.Add(s.Transforms[k]);
+                var taStart = Stopwatch.GetTimestamp();
+                for (int k = 0; k < s.Nodes.Length; k++)
+                {
+                    var index = at.Transform + k;
+                    var t = transformHierarchy.Get(s.Nodes[k]);
+                    if (index < Transforms.length) Transforms[index] = t;
+                    else Transforms.Add(t);
+                }
+                LastTransformArrayMs += (Stopwatch.GetTimestamp() - taStart) * 1000.0 / Stopwatch.Frequency;
             }
-            LastTransformArrayMs += (Stopwatch.GetTimestamp() - taStart) * 1000.0 / Stopwatch.Frequency;
             foreach (var (index, pos, rot) in s.Rest)
                 Rest[at.Transform + index] = new KPWriteLocal { LocalPosition = pos, LocalRotation = rot, Mode = 2 };
 
@@ -484,10 +496,13 @@ namespace KawaiiPhysicsUnity
         }
 
 
-        static (Transform, string) FamilyOf(KawaiiPhysicsChain c) => (c.ResolveComponent().root, c.sharedCollisionTag ?? "");
+        (int, string) FamilyOf(KawaiiPhysicsChain c) => (Hierarchy.Root(NodeOf(c.ResolveComponent())), c.sharedCollisionTag ?? "");
 
-        void BuildSegment(KPSegment seg, List<KawaiiPhysicsChain> chains, Dictionary<Transform, (Vector3 pos, Quaternion rot)> restCache,
-            Dictionary<Transform, Vector3> syncRestCache)
+        /// <summary>元件上的 Transform 參照 → 節點 id（Transform 版的骨架）。</summary>
+        int NodeOf(Transform t) => transformHierarchy.Id(t);
+
+        void BuildSegment(KPSegment seg, List<KawaiiPhysicsChain> chains, Dictionary<int, (Vector3 pos, Quaternion rot)> restCache,
+            Dictionary<int, Vector3> syncRestCache)
         {
             var chain = seg.Chain;
             var rt = new KPChainRuntime
@@ -501,7 +516,7 @@ namespace KawaiiPhysicsUnity
             foreach (var f in chain.externalForces)
                 if (f != null) f.lutBaked = false;
             var b = new Builder();
-            var inst = BuildInstance(b, this, chain, rt, chains, syncRestCache);
+            var inst = BuildInstance(b, chain, rt, chains, syncRestCache);
             rt.ForceCapacity = Mathf.Min(32, chain.externalForces.Count + KawaiiPhysicsChain.MaxTransientExternalForces);
             rt.CaptureSettings(chain);
 
@@ -511,7 +526,7 @@ namespace KawaiiPhysicsUnity
             seg.Family = FamilyOf(chain);
             seg.Instance = inst;
             seg.Template = b;
-            seg.Transforms = b.Transforms.ToArray();
+            seg.Nodes = b.Transforms.ToArray();
             seg.Size = new KPOffsets
             {
                 Bone = b.Bones.Count, Transform = b.Transforms.Count, Sphere = b.Spheres.Count, Capsule = b.Capsules.Count,
@@ -524,13 +539,13 @@ namespace KawaiiPhysicsUnity
             seg.Rest = new (int, Vector3, Quaternion)[b.RestBones.Count];
             for (int i = 0; i < b.RestBones.Count; i++)
             {
-                var t = b.RestBones[i];
-                if (!restCache.TryGetValue(t, out var rest))
+                var node = b.RestBones[i];
+                if (!restCache.TryGetValue(node, out var rest))
                 {
-                    rest = (t.localPosition, t.localRotation);
-                    restCache.Add(t, rest);
+                    rest = (Hierarchy.LocalPosition(node), Hierarchy.LocalRotation(node));
+                    restCache.Add(node, rest);
                 }
-                seg.Rest[i] = (b.Index[t], rest.pos, rest.rot);
+                seg.Rest[i] = (b.Index[node], rest.pos, rest.rot);
             }
             seg.Live = false;
         }
@@ -577,7 +592,7 @@ namespace KawaiiPhysicsUnity
             SyncBones = Alloc<KPSyncBone>(Room(total.Sync));
             SyncTargets = Alloc<KPSyncTarget>(Room(total.SyncTarget));
 
-            var transforms = new Transform[total.Transform];
+            var transforms = transformHierarchy != null ? new Transform[total.Transform] : null;
             var rest = Alloc<KPWriteLocal>(Room(total.Transform));
             var anyWorldCollision = false;
             Runtimes.Clear();
@@ -617,7 +632,8 @@ namespace KawaiiPhysicsUnity
                 s.At = at;
                 s.Runtime.InstanceIndex = i;
                 Runtimes.Add(s.Runtime);
-                Array.Copy(s.Transforms, 0, transforms, at.Transform, s.Transforms.Length);
+                if (transforms != null)
+                    for (int k = 0; k < s.Nodes.Length; k++) transforms[at.Transform + k] = transformHierarchy.Get(s.Nodes[k]);
                 foreach (var (index, pos, rot) in s.Rest)
                     rest[at.Transform + index] = new KPWriteLocal { LocalPosition = pos, LocalRotation = rot, Mode = 2 };
                 anyWorldCollision |= s.Chain.allowWorldCollision;
@@ -641,10 +657,13 @@ namespace KawaiiPhysicsUnity
             Writes = Alloc<KPWriteLocal>(rest.Length);
             Rest = rest;
             EnsureSweepCapacity(anyWorldCollision);
-            var taStart = Stopwatch.GetTimestamp();
-            if (Transforms.isCreated) Transforms.SetTransforms(transforms);
-            else Transforms = new TransformAccessArray(transforms);
-            LastTransformArrayMs = (Stopwatch.GetTimestamp() - taStart) * 1000.0 / Stopwatch.Frequency;
+            if (transforms != null)
+            {
+                var taStart = Stopwatch.GetTimestamp();
+                if (Transforms.isCreated) Transforms.SetTransforms(transforms);
+                else Transforms = new TransformAccessArray(transforms);
+                LastTransformArrayMs = (Stopwatch.GetTimestamp() - taStart) * 1000.0 / Stopwatch.Frequency;
+            }
             UploadLutsIfDirty();
         }
 
@@ -907,8 +926,9 @@ namespace KawaiiPhysicsUnity
         internal sealed class Builder
         {
             // 一般的角色（數百根骨頭）不必中途擴充
-            public readonly List<Transform> Transforms = new List<Transform>(256);
-            public readonly Dictionary<Transform, int> Index = new Dictionary<Transform, int>(256);
+            /// <summary>Transform 索引 → 節點 id（讀寫陣列的順序）。</summary>
+            public readonly List<int> Transforms = new List<int>(256);
+            public readonly Dictionary<int, int> Index = new Dictionary<int, int>(256);
             public readonly List<KPBone> Bones = new List<KPBone>(256);
             public readonly List<KPSphere> Spheres = new List<KPSphere>();
             public readonly List<KPCapsule> Capsules = new List<KPCapsule>();
@@ -920,29 +940,30 @@ namespace KawaiiPhysicsUnity
             public readonly List<KPConstraint> Constraints = new List<KPConstraint>();
             public readonly List<KPSyncBone> SyncBones = new List<KPSyncBone>();
             public readonly List<KPSyncTarget> SyncTargets = new List<KPSyncTarget>();
-            public readonly List<Transform> RestBones = new List<Transform>(256);
+            public readonly List<int> RestBones = new List<int>(256);
 
-            public int IndexOf(Transform t)
+            public int IndexOf(int node)
             {
-                if (Index.TryGetValue(t, out var i)) return i;
+                if (Index.TryGetValue(node, out var i)) return i;
                 i = Transforms.Count;
-                Transforms.Add(t);
-                Index.Add(t, i);
+                Transforms.Add(node);
+                Index.Add(node, i);
                 return i;
             }
         }
 
-        static KPInstance BuildInstance(Builder b, KPWorld world, KawaiiPhysicsChain chain, KPChainRuntime rt,
-            List<KawaiiPhysicsChain> allChains, Dictionary<Transform, Vector3> syncRestCache)
+        KPInstance BuildInstance(Builder b, KawaiiPhysicsChain chain, KPChainRuntime rt,
+            List<KawaiiPhysicsChain> allChains, Dictionary<int, Vector3> syncRestCache)
         {
-            var comp = chain.ResolveComponent();
+            var h = Hierarchy;
+            var comp = NodeOf(chain.ResolveComponent());
             var inst = KPInstance.Create(Mathf.Max(1, chain.targetFramerate));
             inst.UseFixedSubstep = chain.fixedSubstepping ? 1 : 0;
             inst.MaxSubsteps = chain.maxSubsteps;
             inst.ComponentIndex = b.IndexOf(comp);
             inst.SimulationSpace = (int)chain.simulationSpace;
             if (chain.simulationSpace == KPSimulationSpace.BaseBoneSpace && chain.simulationBaseBone != null)
-                inst.BaseBoneIndex = b.IndexOf(chain.simulationBaseBone);
+                inst.BaseBoneIndex = b.IndexOf(NodeOf(chain.simulationBaseBone));
             inst.ForwardAxis = (int)chain.boneForwardAxis;
             inst.DummyBoneLength = chain.dummyBoneLength;
             inst.CollisionOnlySubdivision = chain.boneSubdivisionCollisionOnly ? 1 : 0;
@@ -954,16 +975,16 @@ namespace KawaiiPhysicsUnity
             // 長度換到模擬空間的單位（元件空間＝除以元件縮放）
             var simScale = chain.simulationSpace == KPSimulationSpace.WorldSpace ? 1f
                 : chain.simulationSpace == KPSimulationSpace.BaseBoneSpace && chain.simulationBaseBone != null
-                    ? chain.simulationBaseBone.lossyScale.x : comp.lossyScale.x;
+                    ? h.LossyScaleX(NodeOf(chain.simulationBaseBone)) : h.LossyScaleX(comp);
             simScale = Mathf.Approximately(simScale, 0f) ? 1f : simScale;
 
             // ---- 骨頭 ----
             inst.BoneStart = b.Bones.Count;
             var worldPos = new List<Vector3>(256); // instance 內每根骨頭建立時的世界位置（長度、約束用）
-            AddRoot(b, chain, chain.rootBone, chain.excludeBones, rt, worldPos, simScale);
+            AddRoot(b, chain, NodeOf(chain.rootBone), chain.excludeBones, rt, worldPos, simScale);
             foreach (var r in chain.additionalRootBones)
                 if (r != null && r.rootBone != null)
-                    AddRoot(b, chain, r.rootBone, r.useOverrideExcludeBones ? r.overrideExcludeBones : chain.excludeBones, rt, worldPos, simScale);
+                    AddRoot(b, chain, NodeOf(r.rootBone), r.useOverrideExcludeBones ? r.overrideExcludeBones : chain.excludeBones, rt, worldPos, simScale);
 
             // ---- 骨間約束 ----
             inst.ConstraintStart = b.Constraints.Count;
@@ -975,7 +996,7 @@ namespace KawaiiPhysicsUnity
 
             // ---- SyncBone ----
             inst.SyncStart = b.SyncBones.Count;
-            BuildSyncBones(b, world, chain, inst.BoneStart, rt, comp, syncRestCache);
+            BuildSyncBones(b, chain, inst.BoneStart, rt, comp, syncRestCache);
             inst.SyncCount = b.SyncBones.Count - inst.SyncStart;
 
             // ---- 碰撞 ----
@@ -993,9 +1014,10 @@ namespace KawaiiPhysicsUnity
                 {
                     if (other == null || other == chain || !other.sharedCollisionSource) continue;
                     if (other.sharedCollisionTag != chain.sharedCollisionTag) continue;
-                    if (other.ResolveComponent().root != comp.root) continue; // 原作：同一個 attached actor family
+                    var otherComp = NodeOf(other.ResolveComponent());
+                    if (h.Root(otherComp) != h.Root(comp)) continue; // 原作：同一個 attached actor family
                     AddColliders(b, other.colliders);
-                    AddLimitsAsset(b, other.limitsAsset, other.ResolveComponent());
+                    AddLimitsAsset(b, other.limitsAsset, otherComp);
                 }
             }
             rt.StaticSpheres = b.Spheres.Count - inst.SphereStart;
@@ -1025,12 +1047,17 @@ namespace KawaiiPhysicsUnity
 
         // ---- 骨頭（AddModifyBone） ----
 
-        static void AddRoot(Builder b, KawaiiPhysicsChain chain, Transform root, List<Transform> exclude, KPChainRuntime rt,
+        void AddRoot(Builder b, KawaiiPhysicsChain chain, int root, List<Transform> exclude, KPChainRuntime rt,
             List<Vector3> worldPos, float simScale)
         {
             var start = b.Bones.Count;
             // 排除清單是空的時候不建也不查（走訪是建置裡最花時間的部分）
-            var excludeSet = exclude != null && exclude.Count > 0 ? new HashSet<Transform>(exclude) : null;
+            HashSet<int> excludeSet = null;
+            if (exclude != null && exclude.Count > 0)
+            {
+                excludeSet = new HashSet<int>();
+                foreach (var t in exclude) excludeSet.Add(NodeOf(t));
+            }
             AddBone(b, chain, root, -1, excludeSet, rt, worldPos, simScale);
 
             // CalcBoneLength：離根長度、總長、比例
@@ -1070,9 +1097,10 @@ namespace KawaiiPhysicsUnity
             ForceMask = uint.MaxValue,
         };
 
-        static int AddBone(Builder b, KawaiiPhysicsChain chain, Transform t, int parent, HashSet<Transform> exclude, KPChainRuntime rt,
+        int AddBone(Builder b, KawaiiPhysicsChain chain, int t, int parent, HashSet<int> exclude, KPChainRuntime rt,
             List<Vector3> worldPos, float simScale)
         {
+            var h = Hierarchy;
             if (exclude != null && exclude.Contains(t)) return -1;
             var self = b.Bones.Count;
             var bone = NewBone(parent, b.IndexOf(t), 0);
@@ -1080,21 +1108,21 @@ namespace KawaiiPhysicsUnity
             {
                 // 父是細分假骨時用最後一段的長度（原作 CalcBoneLength）
                 var p = b.Bones[parent];
-                bone.BoneLength = (p.Flags & KPBoneFlags.InterBone) != 0 ? p.BoneLength : t.localPosition.magnitude;
+                bone.BoneLength = (p.Flags & KPBoneFlags.InterBone) != 0 ? p.BoneLength : h.LocalPosition(t).magnitude;
             }
             b.Bones.Add(bone);
-            rt.BoneTransforms.Add(t);
-            var selfPos = t.position;
+            rt.BoneNodes.Add(t);
+            var selfPos = h.Position(t);
             worldPos.Add(selfPos);
             b.RestBones.Add(t);
 
             var childCount = 0;
-            for (int c = 0; c < t.childCount; c++)
+            var n = h.ChildCount(t);
+            for (int c = 0; c < n; c++)
             {
-                var child = t.GetChild(c);
-                // TryGetComponent：找不到時不會像 GetComponent 在編輯器裡產生假 null 物件（慢、會配置）
-                if (child.TryGetComponent<KawaiiPhysicsCollider>(out _) || (exclude != null && exclude.Contains(child))) continue;
-                var childPos = child.position;
+                var child = h.Child(t, c);
+                if (h.IsCollider(child) || (exclude != null && exclude.Contains(child))) continue;
+                var childPos = h.Position(child);
                 var inserted = InsertInterBoneDummies(b, chain, self, childPos, (childPos - selfPos).magnitude / simScale,
                     rt, worldPos, out var effectiveParent, out var firstDummy);
                 var childIndex = AddBone(b, chain, child, effectiveParent, exclude, rt, worldPos, simScale);
@@ -1108,14 +1136,14 @@ namespace KawaiiPhysicsUnity
             if (childCount == 0 && chain.dummyBoneLength > 0f)
             {
                 // 末端假骨（實骨往前方軸延伸 DummyBoneLength）；之間也插細分假骨
-                var tipWorld = selfPos + t.TransformDirection(AxisVector(chain.boneForwardAxis)) * chain.dummyBoneLength * simScale;
+                var tipWorld = selfPos + h.TransformDirection(t, AxisVector(chain.boneForwardAxis)) * chain.dummyBoneLength * simScale;
                 var inserted = InsertInterBoneDummies(b, chain, self, tipWorld, chain.dummyBoneLength, rt, worldPos, out var effectiveParent, out _);
                 var dummy = NewBone(effectiveParent, -1, KPBoneFlags.Dummy);
                 dummy.RealParentIndex = self;
                 dummy.BoneLength = inserted.Count > 0 ? chain.dummyBoneLength / (inserted.Count + 1) : chain.dummyBoneLength;
                 var dummyIndex = b.Bones.Count;
                 b.Bones.Add(dummy);
-                rt.BoneTransforms.Add(null);
+                rt.BoneNodes.Add(KPHierarchy.None);
                 worldPos.Add(tipWorld);
                 AddChild(b, effectiveParent);
                 FinalizeInterBoneDummies(b, inserted, dummyIndex);
@@ -1171,7 +1199,7 @@ namespace KawaiiPhysicsUnity
                 d.BoneLength = distance / (count + 1);
                 var idx = b.Bones.Count;
                 b.Bones.Add(d);
-                rt.BoneTransforms.Add(null);
+                rt.BoneNodes.Add(KPHierarchy.None);
                 worldPos.Add(Vector3.Lerp(parentWorld, childWorld, alpha));
                 AddChild(b, effectiveParent);
                 effectiveParent = idx;
@@ -1196,19 +1224,20 @@ namespace KawaiiPhysicsUnity
 
         // ---- 骨間約束（InitBoneConstraints） ----
 
-        static void BuildConstraints(Builder b, KawaiiPhysicsChain chain, int boneStart, KPChainRuntime rt, List<Vector3> worldPos,
-            Transform comp, float simScale)
+        void BuildConstraints(Builder b, KawaiiPhysicsChain chain, int boneStart, KPChainRuntime rt, List<Vector3> worldPos,
+            int comp, float simScale)
         {
-            int Find(Transform t) => t == null ? -1 : rt.BoneTransforms.IndexOf(t);
+            int Find(int node) => node < 0 ? -1 : rt.BoneNodes.IndexOf(node);
             var pairs = new List<(int, int, bool, KPComplianceType, bool)>();
             foreach (var c in chain.boneConstraints)
-                pairs.Add((Find(c.bone1), Find(c.bone2), c.overrideCompliance, c.complianceType, c.excludeFromSubdivision));
+                pairs.Add((Find(c.bone1 == null ? -1 : NodeOf(c.bone1)), Find(c.bone2 == null ? -1 : NodeOf(c.bone2)),
+                    c.overrideCompliance, c.complianceType, c.excludeFromSubdivision));
             if (chain.boneConstraintsAsset != null)
             {
                 foreach (var e in chain.boneConstraintsAsset.entries)
                 {
-                    var t1 = FindDeep(comp, e.boneName1);
-                    var t2 = FindDeep(comp, e.boneName2);
+                    var t1 = Hierarchy.FindDeep(comp, e.boneName1);
+                    var t2 = Hierarchy.FindDeep(comp, e.boneName2);
                     pairs.Add((Find(t1), Find(t2), e.overrideCompliance, e.complianceType, e.excludeFromSubdivision));
                 }
             }
@@ -1317,7 +1346,7 @@ namespace KawaiiPhysicsUnity
                     d.BaseSettings = chain.EvaluateSettings(d.LengthRate);
                     d.Settings = d.BaseSettings;
                     b.Bones.Add(d);
-                    rt.BoneTransforms.Add(null);
+                    rt.BoneNodes.Add(KPHierarchy.None);
                     worldPos.Add(Vector3.Lerp(p1, p2, alpha));
                 }
             }
@@ -1325,20 +1354,21 @@ namespace KawaiiPhysicsUnity
 
         // ---- SyncBone（InitSyncBones） ----
 
-        static void BuildSyncBones(Builder b, KPWorld world, KawaiiPhysicsChain chain, int boneStart, KPChainRuntime rt, Transform comp,
-            Dictionary<Transform, Vector3> syncRestCache)
+        void BuildSyncBones(Builder b, KawaiiPhysicsChain chain, int boneStart, KPChainRuntime rt, int comp,
+            Dictionary<int, Vector3> syncRestCache)
         {
             foreach (var s in chain.syncBones)
             {
                 if (s == null || s.bone == null) continue;
-                if (!syncRestCache.TryGetValue(s.bone, out var restCS)) restCS = ComponentSpacePosition(comp, s.bone);
+                var syncNode = NodeOf(s.bone);
+                if (!syncRestCache.TryGetValue(syncNode, out var restCS)) restCS = Hierarchy.ComponentSpacePosition(comp, syncNode);
                 var maxDist = s.scaleCurveByDeltaDistance != null && s.scaleCurveByDeltaDistance.length > 0
                     ? s.scaleCurveByDeltaDistance[s.scaleCurveByDeltaDistance.length - 1].time : 0f;
                 var sync = new KPSyncBone
                 {
-                    TransformIndex = b.IndexOf(s.bone),
+                    TransformIndex = b.IndexOf(syncNode),
                     TargetStart = b.SyncTargets.Count,
-                    DeltaCurveLut = maxDist > 0f ? world.InternLut(s.scaleCurveByDeltaDistance, maxDist) : -1,
+                    DeltaCurveLut = maxDist > 0f ? InternLut(s.scaleCurveByDeltaDistance, maxDist) : -1,
                     DeltaCurveMaxDistance = maxDist,
                     InitialPoseLocation = restCS,
                     GlobalScale = s.globalScale,
@@ -1351,7 +1381,7 @@ namespace KawaiiPhysicsUnity
                 foreach (var root in s.targetRoots)
                 {
                     if (root == null || root.bone == null) continue;
-                    var local = rt.BoneTransforms.IndexOf(root.bone);
+                    var local = rt.BoneNodes.IndexOf(NodeOf(root.bone));
                     if (local < 0) continue;
                     // 目標根自己：比例 0
                     b.SyncTargets.Add(new KPSyncTarget { BoneIndex = boneStart + local, Scale = EvalCurve(root.scaleCurveByBoneLengthRate, 0f) });
@@ -1389,32 +1419,26 @@ namespace KawaiiPhysicsUnity
 
         static float EvalCurve(AnimationCurve c, float t) => c != null && c.length > 0 ? c.Evaluate(t) : 1f;
 
-        internal static Vector3 ComponentSpacePosition(Transform comp, Transform t)
-        {
-            var s = comp.lossyScale.x;
-            return Quaternion.Inverse(comp.rotation) * (t.position - comp.position) / (Mathf.Approximately(s, 0f) ? 1f : s);
-        }
-
         // ---- 碰撞來源 ----
 
-        static void AddColliders(Builder b, List<KawaiiPhysicsCollider> colliders)
+        void AddColliders(Builder b, List<KawaiiPhysicsCollider> colliders)
         {
             foreach (var col in colliders)
             {
                 if (col == null) continue;
-                AddShape(b, col.shape, b.IndexOf(col.transform), col.center, col.shape == KawaiiPhysicsCollider.Shape.Capsule ||
+                AddShape(b, col.shape, b.IndexOf(NodeOf(col.transform)), col.center, col.shape == KawaiiPhysicsCollider.Shape.Capsule ||
                     col.shape == KawaiiPhysicsCollider.Shape.TaperedCapsule ? col.AxisRotation : Quaternion.identity,
                     col.radius, col.radius1, col.length, col.extent, col.inner, col.convexMesh);
             }
         }
 
-        static void AddLimitsAsset(Builder b, KawaiiPhysicsLimitsAsset asset, Transform comp)
+        void AddLimitsAsset(Builder b, KawaiiPhysicsLimitsAsset asset, int comp)
         {
             if (asset == null) return;
             foreach (var e in asset.Resolve())
             {
-                var t = FindDeep(comp, e.boneName);
-                if (t == null) continue;
+                var t = Hierarchy.FindDeep(comp, e.boneName);
+                if (t < 0) continue;
                 var axisRot = e.direction == KawaiiPhysicsCollider.Axis.X ? Quaternion.Euler(0f, 0f, -90f)
                     : e.direction == KawaiiPhysicsCollider.Axis.Z ? Quaternion.Euler(90f, 0f, 0f) : Quaternion.identity;
                 var rot = Quaternion.Euler(e.rotation);
@@ -1461,18 +1485,6 @@ namespace KawaiiPhysicsUnity
                     break;
                 }
             }
-        }
-
-        internal static Transform FindDeep(Transform root, string name)
-        {
-            if (root == null || string.IsNullOrEmpty(name)) return null;
-            if (root.name == name) return root;
-            foreach (Transform c in root)
-            {
-                var r = FindDeep(c, name);
-                if (r != null) return r;
-            }
-            return null;
         }
 
         public void Dispose()
