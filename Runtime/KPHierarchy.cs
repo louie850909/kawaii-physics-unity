@@ -26,9 +26,14 @@ namespace KawaiiPhysicsUnity
         public abstract Quaternion LocalRotation(int node);
         public abstract float LossyScaleX(int node);
         public abstract Vector3 TransformDirection(int node, Vector3 direction);
+        public abstract Vector3 LocalScale(int node);
+        /// <summary>localToWorldMatrix（陣列版：建立時的姿勢，根在原點）。</summary>
+        public abstract Matrix4x4 LocalToWorld(int node);
 
         /// <summary>骨頭放回靜止姿勢（停用、移除、重建前）。</summary>
         public abstract void SetLocalPositionAndRotation(int node, Vector3 position, Quaternion rotation);
+        /// <summary>骨頭放回靜止姿勢，含縮放（軟組織）。</summary>
+        public abstract void SetLocalTRS(int node, Vector3 position, Quaternion rotation, Vector3 scale);
 
         /// <summary>設定裡的元件（角色根）→ 節點。陣列版的 -1 是骨架的根（骨架外面、所有根骨頭的父）。</summary>
         public virtual int ResolveComponent(int component) => component;
@@ -133,11 +138,21 @@ namespace KawaiiPhysicsUnity
         public override Quaternion LocalRotation(int node) => nodes[node].localRotation;
         public override float LossyScaleX(int node) => nodes[node].lossyScale.x;
         public override Vector3 TransformDirection(int node, Vector3 direction) => nodes[node].TransformDirection(direction);
+        public override Vector3 LocalScale(int node) => nodes[node].localScale;
+        public override Matrix4x4 LocalToWorld(int node) => nodes[node].localToWorldMatrix;
 
         public override void SetLocalPositionAndRotation(int node, Vector3 position, Quaternion rotation)
         {
             var t = Get(node);
             if (t != null) t.SetLocalPositionAndRotation(position, rotation);
+        }
+
+        public override void SetLocalTRS(int node, Vector3 position, Quaternion rotation, Vector3 scale)
+        {
+            var t = Get(node);
+            if (t == null) return;
+            t.SetLocalPositionAndRotation(position, rotation);
+            t.localScale = scale;
         }
     }
 
@@ -155,6 +170,7 @@ namespace KawaiiPhysicsUnity
         readonly int[][] children;
         readonly Vector3[] restLocalPosition;
         readonly Quaternion[] restLocalRotation;
+        readonly Vector3[] restLocalScale;
         readonly Matrix4x4[] restModel;
         readonly Quaternion[] restModelRotation;
 
@@ -168,6 +184,8 @@ namespace KawaiiPhysicsUnity
             colliders = colliderBones != null ? (bool[])colliderBones.Clone() : new bool[BoneCount];
             restLocalPosition = (Vector3[])localPositions.Clone();
             restLocalRotation = (Quaternion[])localRotations.Clone();
+            restLocalScale = new Vector3[BoneCount];
+            for (int i = 0; i < BoneCount; i++) restLocalScale[i] = localScales != null ? localScales[i] : Vector3.one;
             restModel = new Matrix4x4[BoneCount];
             restModelRotation = new Quaternion[BoneCount];
             var childLists = new List<int>[BoneCount + 1];
@@ -203,7 +221,10 @@ namespace KawaiiPhysicsUnity
         public override Quaternion LocalRotation(int node) => node == RootNode ? Quaternion.identity : restLocalRotation[node];
         public override float LossyScaleX(int node) => node == RootNode ? 1f : ((Vector3)restModel[node].GetColumn(0)).magnitude;
         public override Vector3 TransformDirection(int node, Vector3 direction) => Rotation(node) * direction;
+        public override Vector3 LocalScale(int node) => node == RootNode ? Vector3.one : restLocalScale[node];
+        public override Matrix4x4 LocalToWorld(int node) => node == RootNode ? Matrix4x4.identity : restModel[node];
         // 陣列版沒有要還原的 Transform（呼叫端每幀從動畫或靜止姿勢重新開始）
         public override void SetLocalPositionAndRotation(int node, Vector3 position, Quaternion rotation) { }
+        public override void SetLocalTRS(int node, Vector3 position, Quaternion rotation, Vector3 scale) { }
     }
 }
