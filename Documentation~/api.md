@@ -6,7 +6,7 @@
 ## 目錄
 
 - 元件：[KawaiiPhysicsAnimationEvents](#kawaiiphysicsanimationevents)、[KawaiiPhysicsChain](#kawaiiphysicschain)、[KawaiiPhysicsChain.Axis](#kawaiiphysicschainaxis)、[KawaiiPhysicsChain.BoneConstraint](#kawaiiphysicschainboneconstraint)、[KawaiiPhysicsChain.RootBoneSetting](#kawaiiphysicschainrootbonesetting)、[KawaiiPhysicsChain.SyncBone](#kawaiiphysicschainsyncbone)、[KawaiiPhysicsChain.SyncTargetRoot](#kawaiiphysicschainsynctargetroot)、[KawaiiPhysicsCollider](#kawaiiphysicscollider)、[KawaiiPhysicsCollider.Axis](#kawaiiphysicscollideraxis)、[KawaiiPhysicsCollider.Shape](#kawaiiphysicscollidershape)、[KawaiiPhysicsSoftBody](#kawaiiphysicssoftbody)、[KawaiiPhysicsSoftBody.Axis](#kawaiiphysicssoftbodyaxis)
-- 陣列接口：[KPRigChain](#kprigchain)、[KPRigChain.BoneConstraint](#kprigchainboneconstraint)、[KPRigChain.RootBoneSetting](#kprigchainrootbonesetting)、[KPRigChain.SyncBone](#kprigchainsyncbone)、[KPRigChain.SyncTargetRoot](#kprigchainsynctargetroot)、[KPRigCollider](#kprigcollider)、[KPRigSoftBody](#kprigsoftbody)
+- 陣列接口：[KPRig](#kprig)、[KPRigBoneOutput](#kprigboneoutput)、[KPRigFrame](#kprigframe)、[KPRigChain](#kprigchain)、[KPRigChain.BoneConstraint](#kprigchainboneconstraint)、[KPRigChain.RootBoneSetting](#kprigchainrootbonesetting)、[KPRigChain.SyncBone](#kprigchainsyncbone)、[KPRigChain.SyncTargetRoot](#kprigchainsynctargetroot)、[KPRigCollider](#kprigcollider)、[KPRigSoftBody](#kprigsoftbody)
 - 資產：[KawaiiPhysicsConstraintsAsset](#kawaiiphysicsconstraintsasset)、[KawaiiPhysicsConstraintsAsset.Entry](#kawaiiphysicsconstraintsassetentry)、[KawaiiPhysicsConstraintsAsset.RegexPair](#kawaiiphysicsconstraintsassetregexpair)、[KawaiiPhysicsEventPreset](#kawaiiphysicseventpreset)、[KawaiiPhysicsEventPreset.Kind](#kawaiiphysicseventpresetkind)、[KawaiiPhysicsLimitsAsset](#kawaiiphysicslimitsasset)、[KawaiiPhysicsLimitsAsset.Entry](#kawaiiphysicslimitsassetentry)、[KawaiiPhysicsPreset](#kawaiiphysicspreset)、[KawaiiPhysicsPreset.Data](#kawaiiphysicspresetdata)、[KawaiiPhysicsWindChannel](#kawaiiphysicswindchannel)
 - 外力：[KPCurveEvaluateType](#kpcurveevaluatetype)、[KPExternalForce](#kpexternalforce)、[KPForceBasic](#kpforcebasic)、[KPForceCurve](#kpforcecurve)、[KPForceGravity](#kpforcegravity)、[KPForceProceduralWind](#kpforceproceduralwind)、[KPForceSpace](#kpforcespace)、[KPForceWind](#kpforcewind)、[KPProceduralWindParams](#kpproceduralwindparams)、[KPProceduralWindState](#kpproceduralwindstate)、[KPWindSource](#kpwindsource)
 - 系統與設定：[KPBackend](#kpbackend)、[KPComplianceType](#kpcompliancetype)、[KPPlanarConstraint](#kpplanarconstraint)、[KPSettings](#kpsettings)、[KPSettingsMultiplier](#kpsettingsmultiplier)、[KPSimulationSpace](#kpsimulationspace)、[KPSyncDirection](#kpsyncdirection)、[KPSystem](#kpsystem)、[KPTeleportType](#kpteleporttype)
@@ -275,6 +275,50 @@
 | `Z` | value | `Axis` | 區域 Z 軸 |
 
 ## 陣列接口
+
+### KPRig
+
+*class* — 一個角色的骨鏈物理（陣列接口）。骨架在建構時給：父的索引（父要在子之前）、名稱、靜止姿勢（區域 TRS）。 骨鏈用 KPRigChain 設定（骨頭是這個骨架的索引；component＝-1 是骨架的根）。 每幀呼叫 ScheduleChains，工作完成後讀 Output：AffectedBones 裡、Mode 不是 0 的骨頭換成物理的區域值，再重算模擬空間姿勢。 用完要 Dispose（會先等正在跑的工作）。
+
+| 成員 | 種類 | 型別／簽章 | 說明 |
+|---|---|---|---|
+| `.ctor` | constructor | `(Int32[] parents, String[] names, Vector3[] restLocalPositions, Quaternion[] restLocalRotations, Vector3[] restLocalScales = null, Boolean[] colliderBones = null)` | 骨架：parents[i]＝父的索引（-1＝根骨頭，父要比子小）、names、靜止姿勢的區域位置、旋轉、縮放（null＝都是 1）。colliderBones[i]＝true 的骨頭是碰撞體物件，建骨鏈時不當成子骨頭（null＝沒有）。陣列長度不一致或父不在子之前時丟 ArgumentException。 |
+| `BoneCount` | property | `Int32 { get; }` | 骨頭數。 |
+| `Owner` | property | `Transform { get; set; }` | 簡易世界碰撞不收這個 Transform 底下的碰撞體（角色自己身上的）；null＝都收。 |
+| `Chains` | property | `IReadOnlyList<KPRigChain> { get; }` | 骨鏈清單（用 AddChain／RemoveChain 增減）。 |
+| `ChainCount` | property | `Int32 { get; }` | 模擬中的骨鏈數（下一次排程才反映 AddChain／RemoveChain）。 |
+| `SimulatedBoneCount` | property | `Int32 { get; }` | 模擬中的骨頭數（含末端、細分、橋接的假骨）。 |
+| `Output` | property | `NativeArray<KPRigBoneOutput> { get; }` | 每根骨頭的物理結果（長度＝骨頭數）。ScheduleChains 的工作完成後才能讀。 |
+| `AffectedBones` | property | `NativeArray<Int32> { get; }` | 骨鏈會寫的骨頭（遞增排序）。重算模擬空間姿勢時只要看這些；下一次排程可能因為加減骨鏈而改變。 |
+| `FindBone` | method | `Int32 FindBone(String name)` | 名稱是 name 的第一根骨頭的索引；沒有時是 -1。 |
+| `AddChain` | method | `Void AddChain(KPRigChain chain)` | 加一條骨鏈（下一次排程時建立）。 |
+| `RemoveChain` | method | `Boolean RemoveChain(KPRigChain chain)` | 拿掉一條骨鏈（下一次排程時生效）。回傳有沒有這條。 |
+| `ResetDynamics` | method | `Void ResetDynamics(KPTeleportType type = Reset)` | 所有骨鏈的 ResetDynamics。 |
+| `ScheduleChains` | method | `JobHandle ScheduleChains(KPRigFrame& frame, JobHandle dependsOn = null)` | 排程這一幀的骨鏈物理（接在 dependsOn 之後；frame 的陣列要在 dependsOn 完成時算好）。主執行緒先做需要時的重建與每幀的準備。回傳寫完 Output 的 JobHandle。frame 的陣列長度不對、骨頭索引超出範圍時丟 ArgumentException。 |
+| `Complete` | method | `Void Complete()` | 等排程的工作完成（之後可以讀 Output、改骨鏈）。 |
+| `Dispose` | method | `Void Dispose()` | 等工作完成，釋放原生記憶體。 |
+
+### KPRigBoneOutput
+
+*struct* — 一根骨頭的物理結果（區域空間）。
+
+| 成員 | 種類 | 型別／簽章 | 說明 |
+|---|---|---|---|
+| `LocalPosition` | field | `float3` | 區域位置（Mode＝2 時有效）。 |
+| `LocalRotation` | field | `quaternion` | 區域旋轉（Mode＝1、2 時有效）。 |
+| `Mode` | field | `Int32` | 0＝這一幀沒寫（用動畫的值）、1＝只有旋轉、2＝位置與旋轉。 |
+
+### KPRigFrame
+
+*struct* — KPRig 每幀的輸入。
+
+| 成員 | 種類 | 型別／簽章 | 說明 |
+|---|---|---|---|
+| `DeltaTime` | field | `Single` | 這一幀的時間（秒）。同一幀第二次排程給 0。 |
+| `RootToWorld` | field | `float4x4` | 骨架的根（模擬空間的原點）的世界矩陣。 |
+| `RootRotation` | field | `quaternion` | 骨架的根的世界旋轉（跟 RootToWorld 一致；Transform.rotation）。 |
+| `Model` | field | `NativeArray<float4x4>` | 每根骨頭在根空間的矩陣（長度＝骨頭數）。排程的工作完成前不能改。 |
+| `ModelRotation` | field | `NativeArray<quaternion>` | 每根骨頭在根空間的旋轉（父的旋轉連乘自己的區域旋轉，跟 Transform.rotation 的算法一致）。 |
 
 ### KPRigChain
 
