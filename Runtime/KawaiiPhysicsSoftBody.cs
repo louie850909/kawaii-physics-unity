@@ -83,6 +83,37 @@ namespace KawaiiPhysicsUnity
         [Tooltip("角色根一幀轉動超過這個角度（度）就當成瞬移、重置（0＝不判定）")]
         [Min(0f)] public float teleportRotationThreshold = 90f;
 
+        /// <summary>內部的每幀換算吃的設定（每幀從這個元件的欄位複製過去）。</summary>
+        [NonSerialized] internal readonly KPRigSoftBody settings = new KPRigSoftBody();
+
+        /// <summary>每幀的設定值複製進 settings（骨頭、角色根、碰撞體清單仍由主機直接讀這個元件）。</summary>
+        internal KPRigSoftBody CopyToSettings()
+        {
+            var s = settings;
+            s.enabled = isActiveAndEnabled;
+            s.frequency = frequency;
+            s.dampingRatio = dampingRatio;
+            s.gravity = gravity;
+            s.gravityRelativeToRestPose = gravityRelativeToRestPose;
+            s.externalAcceleration = externalAcceleration;
+            s.animationInertia = animationInertia;
+            s.movementInertia = movementInertia;
+            s.limitMin = limitMin;
+            s.limitMax = limitMax;
+            s.tilt = tilt;
+            s.stretchAxis = stretchAxis;
+            s.stretchAmount = stretchAmount;
+            s.volumePreservation = volumePreservation;
+            s.radius = radius;
+            s.collisionPriority = collisionPriority;
+            s.alpha = alpha;
+            s.targetFramerate = targetFramerate;
+            s.maxSubsteps = maxSubsteps;
+            s.teleportDistanceThreshold = teleportDistanceThreshold;
+            s.teleportRotationThreshold = teleportRotationThreshold;
+            return s;
+        }
+
         internal bool dirty = true;
         internal bool validateRequested;
         internal bool resetRequested;

@@ -282,7 +282,7 @@ namespace KawaiiPhysicsUnity
                     world.Bodies[i] = data;
                     continue;
                 }
-                CopySettings(body, ref data);
+                CopySettings(body.CopyToSettings(), ref data);
                 data.ColliderStart = ci;
                 foreach (var c in body.colliders)
                     if (c != null && c.enabled && c.gameObject.activeInHierarchy && TryMakeCollider(c, out var sc)) world.Colliders[ci++] = sc;
@@ -297,9 +297,9 @@ namespace KawaiiPhysicsUnity
             }
         }
 
-        static void CopySettings(KawaiiPhysicsSoftBody body, ref KPSoftBodyData data)
+        internal static void CopySettings(KPRigSoftBody body, ref KPSoftBodyData data)
         {
-            data.Enabled = body.isActiveAndEnabled ? 1 : 0;
+            data.Enabled = body.enabled ? 1 : 0;
             data.Alpha = Mathf.Clamp01(body.alpha);
             data.Omega = 2f * Mathf.PI * Mathf.Clamp(body.frequency, 0.01f, 1000f);
             data.DampingRatio = Mathf.Max(0f, body.dampingRatio);

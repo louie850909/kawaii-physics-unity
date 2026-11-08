@@ -242,10 +242,14 @@ namespace KawaiiPhysicsUnity
         [Tooltip("啟用時把這個預設的設定套到這條鏈")]
         public KawaiiPhysicsPreset preset;
 
-        internal bool dirty = true;
-        internal bool settingsDirty;
-        internal bool validateRequested;
-        internal KPChainRuntime runtime;
+        /// <summary>內部流程吃的設定（每幀從這個元件的欄位複製過去）。</summary>
+        [NonSerialized] internal readonly KPRigChain settings = new KPRigChain();
+
+        internal bool dirty { get => settings.dirty; set => settings.dirty = value; }
+        internal bool settingsDirty { get => settings.settingsDirty; set => settings.settingsDirty = value; }
+        internal bool validateRequested { get => settings.validateRequested; set => settings.validateRequested = value; }
+        internal KPChainRuntime runtime => settings.runtime;
+        KPChainControl Control => settings.control;
 
         void OnEnable()
         {
@@ -294,26 +298,135 @@ namespace KawaiiPhysicsUnity
         }
 
         /// <summary>有沒有設依骨長比例的曲線（都沒設時每根骨頭的設定一樣）。</summary>
-        internal bool HasSettingsCurves()
-        {
-            static bool Has(AnimationCurve c) => c != null && c.length > 0;
-            return Has(dampingCurve) || Has(stiffnessCurve) || Has(worldDampingLocationCurve) || Has(worldDampingRotationCurve) ||
-                   Has(radiusCurve) || Has(limitAngleCurve);
-        }
+        internal bool HasSettingsCurves() => KPChainSettingsMath.HasCurves(dampingCurve, stiffnessCurve, worldDampingLocationCurve,
+            worldDampingRotationCurve, radiusCurve, limitAngleCurve);
 
         /// <summary>依骨長比例算出的基本設定（還沒夾範圍；倍率在每幀的工作裡乘）。</summary>
-        public KPSettings EvaluateSettings(float lengthRate)
+        public KPSettings EvaluateSettings(float lengthRate) => KPChainSettingsMath.Evaluate(damping, stiffness, worldDampingLocation,
+            worldDampingRotation, radius, limitAngle, dampingCurve, stiffnessCurve, worldDampingLocationCurve, worldDampingRotationCurve,
+            radiusCurve, limitAngleCurve, lengthRate);
+
+        // ===== 複製進設定類別 =====
+
+        /// <summary>
+        /// 欄位複製進 settings。每幀的值（數值、曲線與資產的參照、外力清單）每次都複製；
+        /// structure＝true 時連骨頭與碰撞體（Transform → 節點 id）也換算（同步、比對結構簽章前）。穩態（structure＝false）0 配置。
+        /// </summary>
+        internal void CopyToSettings(KPTransformHierarchy h, bool structure)
         {
-            static float Eval(AnimationCurve c, float t) => c != null && c.length > 0 ? c.Evaluate(t) : 1f;
-            return new KPSettings
+            var s = settings;
+            s.enabled = isActiveAndEnabled;
+            s.skipFrame = false;
+            s.rngSeed = GetHashCode();
+            s.dummyBoneLength = dummyBoneLength;
+            s.boneForwardAxis = boneForwardAxis;
+            s.boneSubdivisionCount = boneSubdivisionCount;
+            s.boneSubdivisionCollisionOnly = boneSubdivisionCollisionOnly;
+            s.boneSubdivisionDensifyByRadius = boneSubdivisionDensifyByRadius;
+            s.boneConstraintSubdivisionCount = boneConstraintSubdivisionCount;
+            s.boneConstraintSubdivisionFeedbackScale = boneConstraintSubdivisionFeedbackScale;
+            s.damping = damping;
+            s.stiffness = stiffness;
+            s.worldDampingLocation = worldDampingLocation;
+            s.worldDampingRotation = worldDampingRotation;
+            s.radius = radius;
+            s.limitAngle = limitAngle;
+            s.planarConstraint = planarConstraint;
+            s.alpha = alpha;
+            s.dampingCurve = dampingCurve;
+            s.stiffnessCurve = stiffnessCurve;
+            s.worldDampingLocationCurve = worldDampingLocationCurve;
+            s.worldDampingRotationCurve = worldDampingRotationCurve;
+            s.radiusCurve = radiusCurve;
+            s.limitAngleCurve = limitAngleCurve;
+            s.simulationSpace = simulationSpace;
+            s.targetFramerate = targetFramerate;
+            s.fixedSubstepping = fixedSubstepping;
+            s.maxSubsteps = maxSubsteps;
+            s.skelCompMoveScale = skelCompMoveScale;
+            s.teleportDistanceThreshold = teleportDistanceThreshold;
+            s.teleportRotationThreshold = teleportRotationThreshold;
+            s.warmUpFrames = warmUpFrames;
+            s.needWarmUp = needWarmUp;
+            s.useWarmUpWhenResetDynamics = useWarmUpWhenResetDynamics;
+            s.limitsAsset = limitsAsset;
+            s.sharedCollisionSource = sharedCollisionSource;
+            s.useSharedCollision = useSharedCollision;
+            s.sharedCollisionTag = sharedCollisionTag;
+            s.boneConstraintsAsset = boneConstraintsAsset;
+            s.boneConstraintGlobalComplianceType = boneConstraintGlobalComplianceType;
+            s.boneConstraintIterationCountBeforeCollision = boneConstraintIterationCountBeforeCollision;
+            s.boneConstraintIterationCountAfterCollision = boneConstraintIterationCountAfterCollision;
+            s.autoAddChildDummyBoneConstraint = autoAddChildDummyBoneConstraint;
+            s.allowWorldCollision = allowWorldCollision;
+            s.worldCollisionLayers = worldCollisionLayers;
+            s.useSimpleWorldCollision = useSimpleWorldCollision;
+            s.simpleWorldCollisionGatherInterval = simpleWorldCollisionGatherInterval;
+            s.simpleWorldCollisionGatherRadius = simpleWorldCollisionGatherRadius;
+            s.simpleWorldCollisionLayers = simpleWorldCollisionLayers;
+            s.simpleWorldCollisionGroundCollision = simpleWorldCollisionGroundCollision;
+            s.simpleWorldCollisionMaxShapes = simpleWorldCollisionMaxShapes;
+            s.gravity = gravity;
+            s.useWorldSpaceGravity = useWorldSpaceGravity;
+            s.useLegacyGravity = useLegacyGravity;
+            s.simpleExternalForce = simpleExternalForce;
+            s.useWorldSpaceSimpleExternalForce = useWorldSpaceSimpleExternalForce;
+            s.enableWind = enableWind;
+            s.windScale = windScale;
+            s.windDirectionNoiseAngle = windDirectionNoiseAngle;
+            s.externalForces = externalForces;
+            if (!structure) return;
+
+            int Node(Transform t) => t == null ? KPHierarchy.None : h.Id(t);
+            void Nodes(List<Transform> from, List<int> to)
             {
-                Damping = damping * Eval(dampingCurve, lengthRate),
-                Stiffness = stiffness * Eval(stiffnessCurve, lengthRate),
-                WorldDampingLocation = worldDampingLocation * Eval(worldDampingLocationCurve, lengthRate),
-                WorldDampingRotation = worldDampingRotation * Eval(worldDampingRotationCurve, lengthRate),
-                Radius = radius * Eval(radiusCurve, lengthRate),
-                LimitAngle = limitAngle * Eval(limitAngleCurve, lengthRate),
-            };
+                to.Clear();
+                foreach (var t in from) to.Add(Node(t));
+            }
+            s.rootBone = Node(rootBone);
+            Nodes(excludeBones, s.excludeBones);
+            s.additionalRootBones.Clear();
+            foreach (var r in additionalRootBones)
+            {
+                if (r == null) continue;
+                var rr = new KPRigChain.RootBoneSetting { rootBone = Node(r.rootBone), useOverrideExcludeBones = r.useOverrideExcludeBones };
+                Nodes(r.overrideExcludeBones, rr.overrideExcludeBones);
+                s.additionalRootBones.Add(rr);
+            }
+            s.component = Node(ResolveComponent());
+            s.simulationBaseBone = Node(simulationBaseBone);
+            s.colliders.Clear();
+            foreach (var c in colliders)
+                if (c != null) s.colliders.Add(c.ToSettings(h));
+            s.boneConstraints.Clear();
+            foreach (var c in boneConstraints)
+            {
+                if (c == null) continue;
+                s.boneConstraints.Add(new KPRigChain.BoneConstraint
+                {
+                    bone1 = Node(c.bone1), bone2 = Node(c.bone2), overrideCompliance = c.overrideCompliance,
+                    complianceType = c.complianceType, excludeFromSubdivision = c.excludeFromSubdivision,
+                });
+            }
+            s.syncBones.Clear();
+            foreach (var sb in syncBones)
+            {
+                if (sb == null) continue;
+                var o = new KPRigChain.SyncBone
+                {
+                    bone = Node(sb.bone), globalScale = sb.globalScale, scaleCurveByDeltaDistance = sb.scaleCurveByDeltaDistance,
+                    applyDirectionX = sb.applyDirectionX, applyDirectionY = sb.applyDirectionY, applyDirectionZ = sb.applyDirectionZ,
+                    enableDistanceAttenuation = sb.enableDistanceAttenuation, attenuationInnerRadius = sb.attenuationInnerRadius,
+                    attenuationOuterRadius = sb.attenuationOuterRadius, maxAttenuationRate = sb.maxAttenuationRate,
+                };
+                foreach (var r in sb.targetRoots)
+                {
+                    if (r == null) continue;
+                    o.targetRoots.Add(new KPRigChain.SyncTargetRoot
+                        { bone = Node(r.bone), includeChildBones = r.includeChildBones, scaleCurveByBoneLengthRate = r.scaleCurveByBoneLengthRate });
+                }
+                s.syncBones.Add(o);
+            }
         }
 
         // ===== 執行時的操作（對應原作 AnimNode 的 Request* 與 ResetDynamics） =====
@@ -321,26 +434,18 @@ namespace KawaiiPhysicsUnity
         /// <summary>原作 ResetDynamics。</summary>
         public void ResetDynamics(KPTeleportType type = KPTeleportType.Reset)
         {
-            if (type == KPTeleportType.Teleport) PendingTeleport = true;
+            if (type == KPTeleportType.Teleport) Control.PendingTeleport = true;
             else
             {
-                PendingReset = true;
+                Control.PendingReset = true;
                 if (useWarmUpWhenResetDynamics) needWarmUp = true;
             }
         }
 
-        internal bool PendingTeleport;
-        internal bool PendingReset;
-
-        static long nextHandle = 1;
-        internal static long NewHandle() => nextHandle++;
-
-        internal readonly List<KPTransientForce> transientForces = new List<KPTransientForce>();
-        internal readonly List<KPActiveMultiplier> multipliers = new List<KPActiveMultiplier>();
         /// <summary>目前有效的暫時外力數。</summary>
-        public int TransientForceCount => transientForces.Count;
+        public int TransientForceCount => Control.transientForces.Count;
         /// <summary>目前有效的設定倍率數。</summary>
-        public int SettingsMultiplierCount => multipliers.Count;
+        public int SettingsMultiplierCount => Control.multipliers.Count;
         /// <summary>同時存在的暫時外力（RequestTransientExternalForce、RequestTransientGust）上限。</summary>
         public const int MaxTransientExternalForces = 8;
         /// <summary>同時存在的設定倍率（StartSettingsMultiplier）上限。</summary>
@@ -349,203 +454,32 @@ namespace KawaiiPhysicsUnity
         public const int TransientGustInheritAllWinds = -2;
 
         /// <summary>加一個暫時外力，lifetime 秒後移除。回傳停止用的 handle。</summary>
-        public long RequestTransientExternalForce(KPExternalForce force, float lifetime)
-        {
-            var h = NewHandle();
-            force.oneShot = false;
-            transientForces.Add(new KPTransientForce { Force = force, RemainingLifetime = lifetime, Handle = h });
-            TrimTransients();
-            return h;
-        }
+        public long RequestTransientExternalForce(KPExternalForce force, float lifetime) => Control.RequestTransientExternalForce(force, lifetime);
 
         /// <summary>
         /// 原作 RequestTransientGust：以某個程序風為底（inheritForceIndex；-1 找第一個啟用中的）產生一陣突風。
         /// direction 非零時用世界空間的這個方向。
         /// </summary>
         public long RequestTransientGust(float strength, float riseTime, float decayTime, Vector3 direction = default,
-            int inheritForceIndex = -1, float holdTime = 0f, bool realTimeEnvelope = false)
-        {
-            var h = NewHandle();
-            var sources = new List<KPForceProceduralWind>();
-            if (inheritForceIndex == TransientGustInheritAllWinds)
-            {
-                foreach (var f in externalForces)
-                    if (f is KPForceProceduralWind pw && pw.enabled) sources.Add(pw);
-            }
-            else
-            {
-                KPForceProceduralWind src = null;
-                if (inheritForceIndex >= 0 && inheritForceIndex < externalForces.Count) src = externalForces[inheritForceIndex] as KPForceProceduralWind;
-                if (src == null)
-                    foreach (var f in externalForces)
-                        if (f is KPForceProceduralWind pw && pw.enabled) { src = pw; break; }
-                sources.Add(src);
-            }
-            if (sources.Count == 0) sources.Add(null);
-            foreach (var src in sources)
-            {
-                var wind = src != null ? (KPForceProceduralWind)src.CloneForTransient() : new KPForceProceduralWind();
-                if (realTimeEnvelope) wind.parameters.timeScale = 1f;
-                if (direction.sqrMagnitude > 1e-8f)
-                {
-                    // 原作：指定方向時不繼承來源的方向與方向雜訊
-                    wind.space = KPForceSpace.WorldSpace;
-                    wind.parameters.windDirection = direction;
-                    wind.parameters.windDirectionNoiseAngle = 0f;
-                }
-                // 突風本身以外的成分歸零：只留下突風
-                var p = wind.parameters;
-                p.constantForce = p.swayForce = p.rippleForce = p.randomForce = 0f;
-                p.strengthCycleRange = Vector2.one;
-                var ts = Mathf.Max(p.timeScale, KPMath.KindaSmallNumber);
-                var lifetime = (Mathf.Max(riseTime, 0f) + Mathf.Max(holdTime, 0f) + Mathf.Max(decayTime, 0f)) / ts + 0.2f;
-                wind.RequestGust(strength, riseTime, decayTime, holdTime, realTimeEnvelope);
-                transientForces.Add(new KPTransientForce { Force = wind, RemainingLifetime = lifetime, Handle = h });
-            }
-            TrimTransients();
-            return h;
-        }
+            int inheritForceIndex = -1, float holdTime = 0f, bool realTimeEnvelope = false) =>
+            Control.RequestTransientGust(externalForces, strength, riseTime, decayTime, direction, inheritForceIndex, holdTime, realTimeEnvelope);
 
         /// <summary>原作 RequestStopTransientExternalForce：blendOut 秒內淡出（程序風是讓突風落到 0）。</summary>
-        public void RequestStopTransientExternalForce(long handle, float blendOutTime)
-        {
-            for (int i = transientForces.Count - 1; i >= 0; i--)
-            {
-                var t = transientForces[i];
-                if (t.Handle != handle) continue;
-                if (blendOutTime <= KPMath.KindaSmallNumber) { transientForces.RemoveAt(i); continue; }
-                if (t.Force is KPForceProceduralWind pw)
-                {
-                    pw.RequestGustStop(blendOutTime);
-                    t.RemainingLifetime = blendOutTime / Mathf.Max(pw.parameters.timeScale, KPMath.KindaSmallNumber) + 0.2f;
-                }
-                else t.RemainingLifetime = Mathf.Min(t.RemainingLifetime, Mathf.Max(blendOutTime, 0f));
-            }
-        }
-
-        void TrimTransients()
-        {
-            while (transientForces.Count > MaxTransientExternalForces) transientForces.RemoveAt(0);
-        }
+        public void RequestStopTransientExternalForce(long handle, float blendOutTime) => Control.RequestStopTransientExternalForce(handle, blendOutTime);
 
         /// <summary>原作 RequestStartPhysicsSettingsMultiplier：起、持、落的包絡；infiniteHold 時持續到停止。</summary>
-        public long StartSettingsMultiplier(KPSettingsMultiplier scale, float riseTime, float holdTime, float decayTime, bool infiniteHold = false)
-        {
-            var h = NewHandle();
-            multipliers.Add(new KPActiveMultiplier
-            {
-                Handle = h, Scale = scale, RiseTime = riseTime, HoldTime = holdTime, DecayTime = decayTime,
-                InfiniteHold = infiniteHold, PeakAlpha = 1f,
-            });
-            TrimMultipliers();
-            return h;
-        }
+        public long StartSettingsMultiplier(KPSettingsMultiplier scale, float riseTime, float holdTime, float decayTime, bool infiniteHold = false) =>
+            Control.StartSettingsMultiplier(scale, riseTime, holdTime, decayTime, infiniteHold);
 
         /// <summary>
         /// 原作 RequestPushPhysicsSettingsMultiplier：由外部每幀推送強度（alpha）。
         /// leaseEvaluations＞0 時，這麼多幀沒推送就在 leaseExpireBlendOut 秒內淡出。
         /// </summary>
-        public void PushSettingsMultiplier(long handle, KPSettingsMultiplier scale, float pushAlpha, int leaseEvaluations = 0, float leaseExpireBlendOut = 0.2f)
-        {
-            if (handle == 0) return;
-            // 逐幀呼叫的 API：用迴圈找（lambda 會捕捉 handle，每次呼叫都配置）
-            KPActiveMultiplier m = null;
-            foreach (var x in multipliers)
-                if (x.Handle == handle)
-                {
-                    m = x;
-                    break;
-                }
-            if (m == null)
-            {
-                m = new KPActiveMultiplier { Handle = handle };
-                multipliers.Add(m);
-            }
-            m.Scale = scale;
-            m.DrivenAlpha = Mathf.Clamp01(pushAlpha);
-            m.LeaseEvaluations = Mathf.Max(0, leaseEvaluations);
-            m.LeaseRemaining = m.LeaseEvaluations;
-            m.LeaseExpireBlendOut = Mathf.Max(0f, leaseExpireBlendOut);
-            m.InfiniteHold = false;
-            m.ExternallyDriven = true;
-            m.PeakAlpha = 1f;
-            m.RiseTime = m.HoldTime = m.DecayTime = m.ElapsedTime = 0f;
-            TrimMultipliers();
-        }
+        public void PushSettingsMultiplier(long handle, KPSettingsMultiplier scale, float pushAlpha, int leaseEvaluations = 0, float leaseExpireBlendOut = 0.2f) =>
+            Control.PushSettingsMultiplier(handle, scale, pushAlpha, leaseEvaluations, leaseExpireBlendOut);
 
         /// <summary>原作 RequestStopPhysicsSettingsMultiplier。</summary>
-        public void StopSettingsMultiplier(long handle, float blendOutTime)
-        {
-            for (int i = multipliers.Count - 1; i >= 0; i--)
-                if (multipliers[i].Handle == handle) StopMultiplierAt(i, blendOutTime);
-        }
-
-        internal void StopMultiplierAt(int index, float blendOutTime)
-        {
-            var m = multipliers[index];
-            if (blendOutTime <= KPMath.KindaSmallNumber) { multipliers.RemoveAt(index); return; }
-            m.PeakAlpha = m.ExternallyDriven ? m.DrivenAlpha : m.PeakAlpha * m.CurrentEnvelope();
-            m.InfiniteHold = false;
-            m.ExternallyDriven = false;
-            m.DrivenAlpha = 0f;
-            m.LeaseEvaluations = m.LeaseRemaining = 0;
-            m.RiseTime = 0f;
-            m.HoldTime = 0f;
-            m.DecayTime = blendOutTime;
-            m.ElapsedTime = 0f;
-        }
-
-        void TrimMultipliers()
-        {
-            while (multipliers.Count > MaxPhysicsSettingsMultipliers) multipliers.RemoveAt(0);
-        }
-
-        /// <summary>原作 ComputeEffectivePhysicsSettingsMultiplierScale：每個倍率依包絡從 1 內插過去，彼此相乘。</summary>
-        internal KPSettingsMultiplier EffectiveMultiplier()
-        {
-            var e = KPSettingsMultiplier.One;
-            foreach (var m in multipliers)
-            {
-                var a = m.ExternallyDriven ? m.DrivenAlpha : m.PeakAlpha * m.CurrentEnvelope();
-                e.Damping *= Mathf.Lerp(1f, m.Scale.Damping, a);
-                e.Stiffness *= Mathf.Lerp(1f, m.Scale.Stiffness, a);
-                e.WorldDampingLocation *= Mathf.Lerp(1f, m.Scale.WorldDampingLocation, a);
-                e.WorldDampingRotation *= Mathf.Lerp(1f, m.Scale.WorldDampingRotation, a);
-                e.Radius *= Mathf.Lerp(1f, m.Scale.Radius, a);
-                e.LimitAngle *= Mathf.Lerp(1f, m.Scale.LimitAngle, a);
-            }
-            return e;
-        }
-
-        /// <summary>原作 ConsumeAndAdvancePhysicsSettingsMultipliers 的時間推進、租約到期與結束移除。</summary>
-        internal void AdvanceMultipliers(float dt)
-        {
-            foreach (var m in multipliers)
-            {
-                m.ElapsedTime += dt;
-                if (m.ExternallyDriven && m.LeaseEvaluations > 0) m.LeaseRemaining--;
-            }
-            for (int i = multipliers.Count - 1; i >= 0; i--)
-            {
-                var m = multipliers[i];
-                if (m.ExternallyDriven && m.LeaseEvaluations > 0 && m.LeaseRemaining <= 0) StopMultiplierAt(i, m.LeaseExpireBlendOut);
-            }
-            for (int i = multipliers.Count - 1; i >= 0; i--)
-            {
-                var m = multipliers[i];
-                if (!m.ExternallyDriven && !m.InfiniteHold && m.ElapsedTime >= m.RiseTime + m.HoldTime + m.DecayTime) multipliers.RemoveAt(i);
-            }
-        }
-
-        /// <summary>原作 ConsumeAndRemoveExpiredTransientExternalForces 的壽命遞減。</summary>
-        internal void AdvanceTransients(float dt)
-        {
-            for (int i = transientForces.Count - 1; i >= 0; i--)
-            {
-                transientForces[i].RemainingLifetime -= dt;
-                if (transientForces[i].RemainingLifetime <= 0f) transientForces.RemoveAt(i);
-            }
-        }
+        public void StopSettingsMultiplier(long handle, float blendOutTime) => Control.StopSettingsMultiplier(handle, blendOutTime);
 
         // ===== 編輯器輔助 =====
 

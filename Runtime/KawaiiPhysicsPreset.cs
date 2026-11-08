@@ -83,5 +83,15 @@ namespace KawaiiPhysicsUnity
 
         /// <summary>把 chain 目前的設定記到這個預設。</summary>
         public void CaptureFrom(KawaiiPhysicsChain chain) => JsonUtility.FromJsonOverwrite(JsonUtility.ToJson(chain), data);
+
+        /// <summary>把設定套到陣列接口的 chain（欄位名稱相同）。只改了設定就就地更新，改到結構才重建這一條。</summary>
+        public void ApplyTo(KPRigChain chain)
+        {
+            JsonUtility.FromJsonOverwrite(JsonUtility.ToJson(data), chain);
+            chain.validateRequested = true;
+        }
+
+        /// <summary>把陣列接口的 chain 目前的設定記到這個預設。</summary>
+        public void CaptureFrom(KPRigChain chain) => JsonUtility.FromJsonOverwrite(JsonUtility.ToJson(chain), data);
     }
 }

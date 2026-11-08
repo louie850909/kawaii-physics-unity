@@ -60,19 +60,24 @@ namespace KawaiiPhysicsUnity
         public string softBodyNameFilter = "";
 
         /// <summary>把這個事件套到一條鏈。</summary>
-        public void Apply(KawaiiPhysicsChain chain)
+        public void Apply(KawaiiPhysicsChain chain) => Apply(chain.settings.control, chain.externalForces);
+
+        /// <summary>把這個事件套到陣列接口的一條鏈。</summary>
+        public void Apply(KPRigChain chain) => Apply(chain.control, chain.externalForces);
+
+        void Apply(KPChainControl control, System.Collections.Generic.List<KPExternalForce> externalForces)
         {
             switch (kind)
             {
                 case Kind.Gust:
-                    chain.RequestTransientGust(strength, riseTime, decayTime, direction, -1, holdTime, realTimeEnvelope);
+                    control.RequestTransientGust(externalForces, strength, riseTime, decayTime, direction, -1, holdTime, realTimeEnvelope);
                     break;
                 case Kind.AddExternalForce:
-                    if (force != null) chain.RequestTransientExternalForce(force.CloneForTransient(), lifetime);
+                    if (force != null) control.RequestTransientExternalForce(force.CloneForTransient(), lifetime);
                     break;
                 case Kind.SettingsMultiplier:
                     KPMath.ResolveEnvelope(duration, blendIn, blendOut, out var rise, out var hold, out var decay);
-                    chain.StartSettingsMultiplier(multiplier, rise, hold, decay);
+                    control.StartSettingsMultiplier(multiplier, rise, hold, decay, false);
                     break;
             }
         }

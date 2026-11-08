@@ -93,8 +93,9 @@ namespace KawaiiPhysicsUnity
                 if (c.validateRequested)
                 {
                     c.validateRequested = false;
+                    c.CopyToSettings(Hierarchy, true);
                     var seg = c.runtime?.Segment;
-                    if (seg == null || seg.Signature != KPWorld.ComputeSignature(c)) c.dirty = true;
+                    if (seg == null || seg.Signature != KPWorld.ComputeSignature(c.settings)) c.dirty = true;
                     else c.settingsDirty = true;
                 }
                 needsSync |= c.dirty;
@@ -107,7 +108,16 @@ namespace KawaiiPhysicsUnity
         /// <summary>準備 → 讀 → 解 →（世界碰撞）→ 寫，做完才回來。</summary>
         public void Simulate(float deltaTime)
         {
+            // 元件的欄位複製進設定類別（每幀的值；結構在同步時換算）
+            foreach (var c in chains)
+            {
+                if (c != null) c.CopyToSettings(Hierarchy, false);
+                else if (!ReferenceEquals(c, null)) c.settings.skipFrame = true; // 刪掉了、下次動畫前才同步：這一幀照舊
+            }
             PrepareFrame(deltaTime);
+            // 流程消耗掉的旗標寫回元件
+            foreach (var c in chains)
+                if (c != null) c.needWarmUp = c.settings.needWarmUp;
             // 指標要在排程之前取：讀取工作排下去之後再對 Reads 呼叫 GetUnsafePtr 會被安全檢查擋下
             var ptrs = world.Pointers();
             var read = new KPReadJob { Reads = world.Reads }.ScheduleReadOnly(world.Transforms, 32);
@@ -180,7 +190,7 @@ namespace KawaiiPhysicsUnity
             {
                 var rt = world.Runtimes[r];
                 var chain = rt.Chain;
-                if (chain == null) continue;
+                if (chain.skipFrame) continue;
                 // 設定（damping 等）改了：就地重算骨頭的設定，不重建、不重置
                 if (chain.settingsDirty || rt.SettingsChanged(chain))
                 {
@@ -198,7 +208,7 @@ namespace KawaiiPhysicsUnity
                 }
                 var inst = world.Instances[rt.InstanceIndex];
 
-                inst.Enabled = chain.isActiveAndEnabled ? 1 : 0;
+                inst.Enabled = chain.enabled ? 1 : 0;
                 inst.Alpha = chain.alpha;
                 inst.TargetFramerate = Mathf.Max(1, chain.targetFramerate);
                 inst.UseFixedSubstep = chain.fixedSubstepping ? 1 : 0;
@@ -229,13 +239,14 @@ namespace KawaiiPhysicsUnity
                     ? quaternion.AxisAngle(rt.Rng.NextFloat3Direction(), rt.Rng.NextFloat(0f, math.radians(chain.windDirectionNoiseAngle)))
                     : quaternion.identity;
 
-                if (chain.PendingTeleport) { inst.Teleport = 1; chain.PendingTeleport = false; }
-                if (chain.PendingReset)
+                var control = chain.control;
+                if (control.PendingTeleport) { inst.Teleport = 1; control.PendingTeleport = false; }
+                if (control.PendingReset)
                 {
                     inst.HasPrevComponent = 0;
                     inst.PoseInitialized = 0;
                     inst.SubstepAccumulator = 0f;
-                    chain.PendingReset = false;
+                    control.PendingReset = false;
                 }
                 if (chain.needWarmUp && chain.warmUpFrames > 0)
                 {
@@ -244,9 +255,9 @@ namespace KawaiiPhysicsUnity
                 }
 
                 // 暫時外力、設定倍率（原作 ConsumeAndRemoveExpired*／ConsumeAndAdvance*）
-                chain.AdvanceTransients(dt);
-                chain.AdvanceMultipliers(dt);
-                inst.Multiplier = chain.EffectiveMultiplier();
+                control.AdvanceTransients(dt);
+                control.AdvanceMultipliers(dt);
+                inst.Multiplier = control.EffectiveMultiplier();
 
                 PrepareForces(rt, ref inst, ctx);
                 // 簡易世界碰撞的槽位是建立時保留的：執行中才打開（或關掉）就重建這一條，這一幀先不收
@@ -265,7 +276,7 @@ namespace KawaiiPhysicsUnity
             var chain = rt.Chain;
             rt.PackedForces.Clear();
             foreach (var f in chain.externalForces) if (f != null && f.enabled) rt.PackedForces.Add(f);
-            foreach (var t in chain.transientForces) if (t.Force != null && t.Force.enabled) rt.PackedForces.Add(t.Force);
+            foreach (var t in chain.control.transientForces) if (t.Force != null && t.Force.enabled) rt.PackedForces.Add(t.Force);
             while (rt.PackedForces.Count > rt.ForceCapacity) rt.PackedForces.RemoveAt(rt.PackedForces.Count - 1);
 
             var n = 0;
@@ -290,9 +301,8 @@ namespace KawaiiPhysicsUnity
                     var b = world.Bones[inst.BoneStart + i];
                     uint mask = 0;
                     var node = i < rt.BoneNodes.Count ? rt.BoneNodes[i] : KPHierarchy.None;
-                    var t = node >= 0 ? Hierarchy.Get(node) : null;
                     for (int k = 0; k < rt.PackedForces.Count && k < 32; k++)
-                        if (rt.PackedForces[k].CanApplyTo(t)) mask |= 1u << k;
+                        if (rt.PackedForces[k].CanApplyTo(Hierarchy, node)) mask |= 1u << k;
                     b.ForceMask = mask;
                     world.Bones[inst.BoneStart + i] = b;
                 }
@@ -315,7 +325,7 @@ namespace KawaiiPhysicsUnity
         void UpdateSimpleWorldCollision(KPChainRuntime rt, ref KPInstance inst, float dt)
         {
             var chain = rt.Chain;
-            var comp = chain.ResolveComponent();
+            var comp = Hierarchy.Get(chain.component);
             rt.GatherTimer += dt;
             if (rt.GatherTimer >= chain.simpleWorldCollisionGatherInterval)
             {
@@ -426,8 +436,19 @@ namespace KawaiiPhysicsUnity
             membershipChanged = false;
             chains.RemoveAll(c => c == null);
             world ??= new KPWorld(Hierarchy);
-            world.Sync(chains, restCache, syncRestCache);
-            foreach (var c in chains) c.dirty = false;
+            settingsList.Clear();
+            foreach (var c in chains)
+            {
+                c.CopyToSettings(Hierarchy, true);
+                settingsList.Add(c.settings);
+            }
+            world.Sync(settingsList, restCache, syncRestCache);
+            settingsList.Clear();
+            foreach (var c in chains)
+            {
+                c.dirty = false;
+                c.needWarmUp = c.settings.needWarmUp; // 建立時消耗的暖機旗標寫回元件
+            }
             KPWindZones.MarkDirty();
             // 靜止姿勢快取：停用後才刪除的角色，骨頭不會在移除時被清掉 → 快取超過使用中的兩倍時清一次（攤提成本）
             var limit = 2 * Mathf.Max(256, world.UsedTransforms);
@@ -443,6 +464,7 @@ namespace KawaiiPhysicsUnity
         }
 
         readonly List<int> pruneKeys = new List<int>();
+        readonly List<KPRigChain> settingsList = new List<KPRigChain>();
 
         void PruneDestroyed<T>(Dictionary<int, T> cache)
         {
