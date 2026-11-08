@@ -412,6 +412,28 @@ namespace KawaiiPhysicsUnity.Tests
             Assert.That(KPSystem.RestCacheCount, Is.LessThan(31 * 128 / 2));
         }
 
+        [Test(Description = "角色反覆生成、刪除：節點 id 的登記表不會一直變大（刪掉的 Transform 的 id 回收）")]
+        public void NodeRegistryStaysBoundedWhenCharactersRespawn()
+        {
+            var keep = Spawn("keep", Vector3.zero, 0, false);
+            var chains = new List<KawaiiPhysicsChain> { keep };
+            var bases = new List<Vector3> { Vector3.zero };
+            var frame = 0;
+            Frame(frame++, chains, bases);
+            var baseline = KPSystem.ChainHost.Hierarchy.Count;
+            for (int k = 0; k < 30; k++)
+            {
+                var extra = Spawn($"extra{k}", new Vector3(4f, 0f, 0f), k, false);
+                Frame(frame++, chains, bases);
+                Object.DestroyImmediate(extra.gameObject);      // 直接刪除（編輯模式不會呼叫 OnDisable）
+                KPSystem.Unregister(extra);
+                Frame(frame++, chains, bases);
+            }
+            var count = KPSystem.ChainHost.Hierarchy.Count;
+            TestContext.WriteLine($"節點登記 {baseline} → {count} 筆（不回收的話約 {baseline * 31} 筆）");
+            Assert.That(count, Is.LessThan(baseline * 31 / 4));
+        }
+
         [Test(Description = "執行中打開簡易世界碰撞（沒呼叫 MarkDirty）：自動重建這一條，不會寫到相鄰角色的碰撞")]
         public void EnablingSimpleWorldCollisionAtRuntime()
         {

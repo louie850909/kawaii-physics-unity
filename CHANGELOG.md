@@ -8,6 +8,14 @@
 - 測試：重構用的逐位元快照（`KPSnapshotTests`，記錄檔 `Tests/Editor/KPSnapshots.txt`）。全功能的測試角色 3 種模擬空間、軟組織、
   每種碰撞體各一個的情境，第 0／1／60 幀把所有 Transform 的本地 TRS 與骨頭狀態各雜湊成一個值。v0.5 陣列接口的重構前後要一致。
   記錄檔跟 CPU 有關（Burst 的浮點結果），換機器要在重構之前重新記錄。
+- 測試：節點 id 的登記與回收（`KPHierarchyTests`）、角色反覆生成時登記表不會一直變大。
+
+### Changed
+- 內部重構（v0.5 陣列接口的準備，公開 API 與模擬結果不變，`KPSnapshotTests` 逐位元一致）：
+  - 建骨鏈改成透過內部的骨頭來源介面 `KPHierarchy`（骨頭以節點 id 表示）。現在只有 Transform 版；v0.5 的 `KPRig` 會加陣列版，
+    共用同一套建立程式（細分、橋接假骨、約束、SyncBone、碰撞體、Limits／Constraints 資產）。
+  - `KPSystem`、軟組織系統的靜態狀態搬進主機物件（`KPChainHost`、`KPSoftHost`）；`KPSystem` 持有全域的那一個並轉呼叫。
+  - 場景風（WindZone）的收集改成所有主機共用（`KPWindZones`），各主機用自己的模擬時間算脈動。
 
 ## [0.4.7] - 2026-11-08
 

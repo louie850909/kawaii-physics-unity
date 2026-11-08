@@ -1,4 +1,4 @@
-// 軟組織的系統：KawaiiPhysicsSoftBody 打包成一組 NativeArray，由 KPSystem 的兩個 PlayerLoop 階段驅動
+// 軟組織的系統：KawaiiPhysicsSoftBody 打包成一組 NativeArray（KPSoftHost），由 KPSystem 的兩個 PlayerLoop 階段驅動
 //（Update 前還原靜止姿勢；所有 LateUpdate 之後在 Chain 之前 讀 → 解 → 寫）。
 // 元件數與骨頭數都少（一個角色幾根），加入、移除、結構變更時整批重建，模擬狀態依骨頭沿用（其他元件不受影響）。
 using System;
@@ -117,26 +117,27 @@ namespace KawaiiPhysicsUnity
         }
     }
 
-    internal static class KPSoftBodySystem
+    /// <summary>軟組織的主機：一組元件、它們打包成的 KPSoftWorld、靜止姿勢的快取。KPSoftBodySystem 持有全域的那一個。</summary>
+    internal sealed class KPSoftHost
     {
-        static readonly List<KawaiiPhysicsSoftBody> bodies = new List<KawaiiPhysicsSoftBody>();
+        readonly List<KawaiiPhysicsSoftBody> bodies = new List<KawaiiPhysicsSoftBody>();
         /// <summary>
         /// 靜止姿勢：啟用時（動畫還沒動）記下來；骨頭離開模擬時（還原之後）刪掉，下次啟用重新記錄
         ///（應用端在停用期間改了骨頭的靜止姿勢也會反映）。
         /// </summary>
-        static readonly Dictionary<Transform, KPSoftRest> restCache = new Dictionary<Transform, KPSoftRest>();
-        static KPSoftWorld world;
-        static bool membershipChanged;
+        readonly Dictionary<Transform, KPSoftRest> restCache = new Dictionary<Transform, KPSoftRest>();
+        KPSoftWorld world;
+        bool membershipChanged;
 
-        internal static KPSoftWorld World => world;
+        internal KPSoftWorld World => world;
         /// <summary>重建次數（測試用）。</summary>
-        internal static int SyncCount { get; private set; }
-        internal static int RestCacheCount => restCache.Count;
-        public static int BodyCount => world?.BodyCount ?? 0;
-        public static int BoneCount => world?.BoneCount ?? 0;
+        internal int SyncCount { get; private set; }
+        internal int RestCacheCount => restCache.Count;
+        public int BodyCount => world?.BodyCount ?? 0;
+        public int BoneCount => world?.BoneCount ?? 0;
 
         /// <summary>這根骨頭是不是這個元件在模擬（用 Transform 找，不用清單索引）；是的話給世界的骨頭索引。</summary>
-        internal static bool TryGetOwnBone(KawaiiPhysicsSoftBody body, Transform t, out int wi)
+        internal bool TryGetOwnBone(KawaiiPhysicsSoftBody body, Transform t, out int wi)
         {
             wi = -1;
             var rt = body.runtime;
@@ -144,7 +145,7 @@ namespace KawaiiPhysicsUnity
             return world.BoneLookup.TryGetValue(t, out wi) && world.Bones[wi].Body == rt.BodyIndex;
         }
 
-        public static void Register(KawaiiPhysicsSoftBody body)
+        public void Register(KawaiiPhysicsSoftBody body)
         {
             if (body == null) return;
             if (!bodies.Contains(body))
@@ -158,7 +159,7 @@ namespace KawaiiPhysicsUnity
             membershipChanged = true;
         }
 
-        public static void Unregister(KawaiiPhysicsSoftBody body)
+        public void Unregister(KawaiiPhysicsSoftBody body)
         {
             if (!bodies.Remove(body)) return;
             membershipChanged = true;
@@ -167,7 +168,7 @@ namespace KawaiiPhysicsUnity
         }
 
         /// <summary>現在的姿勢重新記成靜止姿勢與重力參考（KawaiiPhysicsSoftBody.CaptureRestPose）。</summary>
-        public static void CaptureRestPose(KawaiiPhysicsSoftBody body)
+        public void CaptureRestPose(KawaiiPhysicsSoftBody body)
         {
             var root = body.ResolveRoot();
             foreach (var t in body.bones)
@@ -193,7 +194,7 @@ namespace KawaiiPhysicsUnity
         }
 
         /// <summary>動畫更新前：需要時重建，骨頭放回靜止姿勢（動畫沒寫到的骨頭不會殘留上一幀的物理結果）。</summary>
-        public static void RestorePhase()
+        public void RestorePhase()
         {
             var needsSync = membershipChanged;
             foreach (var b in bodies)
@@ -219,7 +220,7 @@ namespace KawaiiPhysicsUnity
         }
 
         /// <summary>所有 LateUpdate 之後（Chain 之前）：讀 → 解 → 寫。</summary>
-        public static void SimulatePhase(float deltaTime)
+        public void SimulatePhase(float deltaTime)
         {
             if (world == null) return;
             PrepareFrame();
@@ -228,7 +229,7 @@ namespace KawaiiPhysicsUnity
             new KPSoftApplyJob { Locals = world.Writes }.Schedule(world.Transforms, solve).Complete();
         }
 
-        static JobHandle ScheduleSolve(float deltaTime, JobHandle dependsOn)
+        JobHandle ScheduleSolve(float deltaTime, JobHandle dependsOn)
         {
             var job = new KPSoftSolveJob
             {
@@ -263,7 +264,7 @@ namespace KawaiiPhysicsUnity
         // 每幀在主執行緒準備：設定、碰撞體、衝量
         // ===================================================================
 
-        static void PrepareFrame()
+        void PrepareFrame()
         {
             var colliderTotal = 0;
             foreach (var body in world.Owners)
@@ -322,7 +323,7 @@ namespace KawaiiPhysicsUnity
         }
 
         /// <summary>主執行緒累積的衝量搬到骨頭上（位置衰減用這一刻骨頭的位置＝動畫後的姿勢）。</summary>
-        static void TransferImpulses(KawaiiPhysicsSoftBody body)
+        void TransferImpulses(KawaiiPhysicsSoftBody body)
         {
             var uniform = body.pendingUniformImpulse;
             var perBone = body.pendingImpulses;
@@ -405,7 +406,7 @@ namespace KawaiiPhysicsUnity
         static readonly Dictionary<Transform, int> transformIndex = new Dictionary<Transform, int>();
         static readonly List<Transform> staleKeys = new List<Transform>();
 
-        static void Sync()
+        void Sync()
         {
             membershipChanged = false;
             SyncCount++;
@@ -692,7 +693,7 @@ namespace KawaiiPhysicsUnity
             boneList[i] = bone;
         }
 
-        public static void Shutdown()
+        public void Shutdown()
         {
             world?.Dispose();
             world = null;
@@ -706,5 +707,26 @@ namespace KawaiiPhysicsUnity
             newChain.Clear();
             membershipChanged = false;
         }
+    }
+    /// <summary>全域的軟組織主機（場景上的 KawaiiPhysicsSoftBody）。KPSystem 的兩個 PlayerLoop 階段呼叫它。</summary>
+    internal static class KPSoftBodySystem
+    {
+        static readonly KPSoftHost host = new KPSoftHost();
+
+        internal static KPSoftHost Host => host;
+        internal static KPSoftWorld World => host.World;
+        /// <summary>重建次數（測試用）。</summary>
+        internal static int SyncCount => host.SyncCount;
+        internal static int RestCacheCount => host.RestCacheCount;
+        public static int BodyCount => host.BodyCount;
+        public static int BoneCount => host.BoneCount;
+
+        internal static bool TryGetOwnBone(KawaiiPhysicsSoftBody body, Transform t, out int wi) => host.TryGetOwnBone(body, t, out wi);
+        public static void Register(KawaiiPhysicsSoftBody body) => host.Register(body);
+        public static void Unregister(KawaiiPhysicsSoftBody body) => host.Unregister(body);
+        public static void CaptureRestPose(KawaiiPhysicsSoftBody body) => host.CaptureRestPose(body);
+        public static void RestorePhase() => host.RestorePhase();
+        public static void SimulatePhase(float deltaTime) => host.SimulatePhase(deltaTime);
+        public static void Shutdown() => host.Shutdown();
     }
 }

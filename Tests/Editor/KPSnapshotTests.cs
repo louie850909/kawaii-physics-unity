@@ -7,7 +7,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using NUnit.Framework;
 using Unity.Collections;
@@ -40,13 +39,8 @@ namespace KawaiiPhysicsUnity.Tests
                 if (go != null && go.transform.parent == null) Object.DestroyImmediate(go);
         }
 
-        /// <summary>每次執行都一樣的起點：靜態的 frame seed（Shutdown 不重設）歸 1。</summary>
-        static void ResetDeterminism()
-        {
-            var f = typeof(KPSystem).GetField("frameSeed", BindingFlags.Static | BindingFlags.NonPublic);
-            Assert.IsNotNull(f, "KPSystem.frameSeed 不見了：重構後要在這裡改成新的重設方式");
-            f.SetValue(null, 1u);
-        }
+        /// <summary>每次執行都一樣的起點：全域主機的 frame seed（Shutdown 不重設）歸 1。</summary>
+        static void ResetDeterminism() => KPSystem.ChainHost.FrameSeed = 1u;
 
         /// <summary>Chain 的亂數用 GetHashCode（每次執行的 instance id 不同）播種：建好之後改成固定的種子。</summary>
         static void PinRng(KawaiiPhysicsChain chain, uint seed)
