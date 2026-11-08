@@ -12,6 +12,8 @@ namespace KawaiiPhysicsUnity
         /// <summary>這一幀的時間（原作 PreApply 時的 GetStepDeltaTime＝幀時間）。</summary>
         public float DeltaTime;
         public uint FrameSeed;
+        /// <summary>主機的幀數（共用的程序風時鐘一幀只推進一次）。</summary>
+        public int FrameIndex;
     }
 
     /// <summary>對應 FKawaiiPhysics_ExternalForce。</summary>
@@ -402,7 +404,7 @@ namespace KawaiiPhysicsUnity
             var p = Params;
             var s = State;
             if (windSource == KPWindSource.Shared && sharedChannel != null)
-                s.AdvanceOncePerFrame(KPSystem.FrameIndex, ctx.DeltaTime, p.timeScale);
+                s.AdvanceOncePerFrame(ctx.FrameIndex, ctx.DeltaTime, p.timeScale);
             else
                 s.Advance(ctx.DeltaTime, p.timeScale);
 

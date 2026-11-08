@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+### Added
+- 陣列接口 `KPRig`（骨鏈）：沒有 Transform 的角色用的骨鏈物理。骨架（父的索引、名稱、靜止姿勢）在建構時給，骨鏈用 `KPRigChain`；
+  每幀 `ScheduleChains(KPRigFrame, JobHandle)` 接在呼叫端的工作後面，結果在 `Output`（每根骨頭的區域值與模式）與 `AffectedBones`。
+  建立、每幀的準備、解算都跟 `KawaiiPhysicsChain` 共用同一套程式；每個角色各自一個 world；穩態 0 GC；`Dispose` 會先等工作完成。
+  `KPRigFrame`、`KPRigBoneOutput` 是它的輸入與輸出。說明見 `index.md` 的「陣列接口」。
+- 測試 `KPRigEquivalenceTests`：同一個角色分別用 Transform 版與 `KPRig` 跑 120 幀（3 種模擬空間、全功能，再加一個涵蓋其餘功能的情境），
+  結構一致、位置差前 10 幀 ≤ 0.01 mm、120 幀內 ≤ 1 mm（實測 ≤ 0.006 mm）；父子順序與骨頭範圍的檢查、會寫的骨頭清單、
+  工作還在跑時 Dispose、三種後端、穩態 0 GC、1／3／16 個角色的效能量測。
+
+### Changed
+- 內部：骨鏈主機的共用部分抽成 `KPChainCore`（`KPChainHost` 與 `KPRig` 各自衍生）；`KPArrayHierarchy` 是陣列版的骨頭來源。
+  外力的每幀內容多帶主機的幀數（共用的程序風時鐘用它，原本讀 `KPSystem.FrameIndex`）。
+
+### Fixed
+- 簡易世界碰撞收集到球碰撞體時每幀配置 GC（3 個引數的 `Mathf.Max` 是 params 陣列）。原本的穩態 0 GC 測試的角色離障礙物太遠、只收到地面，沒有抓到。
+
 ## [0.5.0-pre.1] - 2026-11-08
 
 v0.5 陣列接口（`KPRig`）的前置版本：設定類別與共用的流程。`KPRig` 本身在 0.5.0。元件的行為與模擬結果不變（`KPSnapshotTests` 逐位元一致）。

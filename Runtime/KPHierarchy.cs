@@ -30,6 +30,9 @@ namespace KawaiiPhysicsUnity
         /// <summary>骨頭放回靜止姿勢（停用、移除、重建前）。</summary>
         public abstract void SetLocalPositionAndRotation(int node, Vector3 position, Quaternion rotation);
 
+        /// <summary>設定裡的元件（角色根）→ 節點。陣列版的 -1 是骨架的根（骨架外面、所有根骨頭的父）。</summary>
+        public virtual int ResolveComponent(int component) => component;
+
         /// <summary>最上層的祖先（Transform.root）。</summary>
         public int Root(int node)
         {
@@ -136,5 +139,71 @@ namespace KawaiiPhysicsUnity
             var t = Get(node);
             if (t != null) t.SetLocalPositionAndRotation(position, rotation);
         }
+    }
+
+    /// <summary>
+    /// 陣列版的骨架（KPRig）：節點 0..BoneCount−1 是骨頭，節點 BoneCount 是骨架的根（骨架外面，元件空間的原點）。
+    /// 建立時的姿勢是靜止姿勢，根放在原點（建骨鏈只用到相對的距離、方向，跟根在世界的哪裡無關）。
+    /// </summary>
+    internal sealed class KPArrayHierarchy : KPHierarchy
+    {
+        public readonly int BoneCount;
+        public int RootNode => BoneCount;
+        readonly int[] parents;
+        readonly string[] names;
+        readonly bool[] colliders;
+        readonly int[][] children;
+        readonly Vector3[] restLocalPosition;
+        readonly Quaternion[] restLocalRotation;
+        readonly Matrix4x4[] restModel;
+        readonly Quaternion[] restModelRotation;
+
+        /// <summary>parents 要父在子之前（索引比子小）；兄弟的順序是索引的順序。</summary>
+        public KPArrayHierarchy(int[] parents, string[] names, Vector3[] localPositions, Quaternion[] localRotations, Vector3[] localScales,
+            bool[] colliderBones)
+        {
+            BoneCount = parents.Length;
+            this.parents = (int[])parents.Clone();
+            this.names = (string[])names.Clone();
+            colliders = colliderBones != null ? (bool[])colliderBones.Clone() : new bool[BoneCount];
+            restLocalPosition = (Vector3[])localPositions.Clone();
+            restLocalRotation = (Quaternion[])localRotations.Clone();
+            restModel = new Matrix4x4[BoneCount];
+            restModelRotation = new Quaternion[BoneCount];
+            var childLists = new List<int>[BoneCount + 1];
+            for (int i = 0; i <= BoneCount; i++) childLists[i] = new List<int>();
+            for (int i = 0; i < BoneCount; i++)
+            {
+                var p = parents[i];
+                var local = Matrix4x4.TRS(localPositions[i], localRotations[i], localScales != null ? localScales[i] : Vector3.one);
+                restModel[i] = p < 0 ? local : restModel[p] * local;
+                restModelRotation[i] = p < 0 ? localRotations[i] : restModelRotation[p] * localRotations[i];
+                childLists[p < 0 ? BoneCount : p].Add(i);
+            }
+            children = new int[BoneCount + 1][];
+            for (int i = 0; i <= BoneCount; i++) children[i] = childLists[i].ToArray();
+        }
+
+        public int ParentBone(int bone) => parents[bone];
+        public string BoneName(int bone) => names[bone];
+        public Matrix4x4 RestModel(int bone) => restModel[bone];
+        public Quaternion RestModelRotation(int bone) => restModelRotation[bone];
+
+        public bool IsValid(int node) => node >= 0 && node <= BoneCount;
+        public override int ResolveComponent(int component) => component >= 0 ? component : RootNode;
+        public override bool IsAlive(int node) => IsValid(node);
+        public override int Parent(int node) => node == RootNode ? None : parents[node] < 0 ? RootNode : parents[node];
+        public override int ChildCount(int node) => children[node].Length;
+        public override int Child(int node, int index) => children[node][index];
+        public override string Name(int node) => node == RootNode ? "" : names[node];
+        public override bool IsCollider(int node) => node != RootNode && colliders[node];
+        public override Vector3 Position(int node) => node == RootNode ? Vector3.zero : (Vector3)restModel[node].GetColumn(3);
+        public override Quaternion Rotation(int node) => node == RootNode ? Quaternion.identity : restModelRotation[node];
+        public override Vector3 LocalPosition(int node) => node == RootNode ? Vector3.zero : restLocalPosition[node];
+        public override Quaternion LocalRotation(int node) => node == RootNode ? Quaternion.identity : restLocalRotation[node];
+        public override float LossyScaleX(int node) => node == RootNode ? 1f : ((Vector3)restModel[node].GetColumn(0)).magnitude;
+        public override Vector3 TransformDirection(int node, Vector3 direction) => Rotation(node) * direction;
+        // 陣列版沒有要還原的 Transform（呼叫端每幀從動畫或靜止姿勢重新開始）
+        public override void SetLocalPositionAndRotation(int node, Vector3 position, Quaternion rotation) { }
     }
 }

@@ -147,6 +147,43 @@ softBody.MarkDirty();                                               // 用程式
 套件只提供機制與介面，不帶任何特定遊戲、模型格式或角色的骨頭名稱與參數對應。
 哪些骨頭要模擬、每個部位的頻率與上限、什麼時候加衝量（依碰撞、動畫、互動），由應用端讀自己的資料後設定元件的欄位、呼叫 API。
 
+## 陣列接口（沒有 Transform 的角色）
+
+骨頭姿勢放在 `NativeArray`、由自己的工作鏈計算的角色（例如用 Burst 算姿勢、直接寫蒙皮矩陣的系統），用 `KPRig`。
+骨鏈的建立、每幀的準備（外力、倍率、風、簡易世界碰撞）、解算都跟 `KawaiiPhysicsChain` 是同一套程式，結果一致（測試在同一個角色上比對兩條路，120 幀內差 0.01 mm 以下）。
+
+```csharp
+// 骨架：父的索引（父要在子之前）、名稱、靜止姿勢（區域 TRS）。colliderBones＝碰撞體物件（建骨鏈時不當成子骨頭）
+var rig = new KPRig(parents, names, restPositions, restRotations, restScales, colliderBones);
+rig.Owner = characterRoot;   // 簡易世界碰撞不收它底下的碰撞體（可省略）
+var hair = new KPRigChain { rootBone = rig.FindBone("hair_root"), dummyBoneLength = 0.05f, gravity = new Vector3(0, -9.8f, 0) };
+hair.colliders.Add(new KPRigCollider { bone = rig.FindBone("head"), radius = 0.09f });
+rig.AddChain(hair);
+
+// 每幀（LateUpdate 等）：模擬空間（骨架的根）的姿勢算好之後
+var handle = rig.ScheduleChains(new KPRigFrame
+{
+    DeltaTime = dt,
+    RootToWorld = root.localToWorldMatrix,
+    RootRotation = root.rotation,
+    Model = model,                  // NativeArray<float4x4>：每根骨頭在根空間的矩陣
+    ModelRotation = modelRotation,  // NativeArray<quaternion>：父的旋轉連乘自己的區域旋轉
+}, poseHandle);
+// handle 完成後：rig.AffectedBones 裡、rig.Output[i].Mode 不是 0 的骨頭換成 Output 的區域值，再重算模擬空間姿勢
+rig.Dispose(); // 用完（會先等工作完成）
+```
+
+- `KPRigChain`、`KPRigCollider` 的欄位跟元件一樣（說明見 `KawaiiPhysicsChain`、`KawaiiPhysicsCollider`），骨頭是骨架的索引。
+  `component`＝-1 是骨架的根（元件空間的原點）。限制資產、約束資產用名稱在整個骨架裡找。
+- 每個角色各自一個 `KPRig`（各自的 `KPWorld`）。排程前會先等上一次的工作完成，所以同一幀排第二次時給 `DeltaTime = 0`。
+- 動畫前不用還原：呼叫端每幀從動畫或靜止姿勢重新算模擬空間姿勢。物理結果不要寫回動畫的本地值，當成一層覆蓋只給重算模擬空間時用。
+- 讀取的區域姿勢從 `Model` 反推（父的矩陣的反矩陣），所以 `Model` 要包含所有會影響骨頭的調整（體型的縮放等）。
+- 外力的骨頭篩選只看名稱（`applyBoneNameFilter`／`ignoreBoneNameFilter`）；Transform 的篩選清單在陣列接口沒有作用。
+- 簡易世界碰撞的收集中心是骨架的根這一幀的位置；`component` 指定成某根骨頭時用那根骨頭的靜止姿勢推算。
+- 世界碰撞（`allowWorldCollision`）在排程的工作裡掃掠，用的是排程那一刻的物理場景。
+- 共用的程序風頻道（`KawaiiPhysicsWindChannel`）以各主機的幀數推進：同一個頻道同時給 `KawaiiPhysicsChain` 與 `KPRig` 用時，一幀可能推進兩次。
+- 軟組織的陣列接口在 0.5.0 加入（`KPRig.ScheduleSoftBodies`）。
+
 ## 執行順序
 
 兩個時間點都用 PlayerLoop 插入，不需要 MonoBehaviour：

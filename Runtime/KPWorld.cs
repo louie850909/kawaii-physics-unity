@@ -496,7 +496,7 @@ namespace KawaiiPhysicsUnity
         }
 
 
-        (int, string) FamilyOf(KPRigChain c) => (Hierarchy.Root(c.component), c.sharedCollisionTag ?? "");
+        (int, string) FamilyOf(KPRigChain c) => (Hierarchy.Root(Hierarchy.ResolveComponent(c.component)), c.sharedCollisionTag ?? "");
 
         void BuildSegment(KPSegment seg, List<KPRigChain> chains, Dictionary<int, (Vector3 pos, Quaternion rot)> restCache,
             Dictionary<int, Vector3> syncRestCache)
@@ -953,7 +953,7 @@ namespace KawaiiPhysicsUnity
             List<KPRigChain> allChains, Dictionary<int, Vector3> syncRestCache)
         {
             var h = Hierarchy;
-            var comp = chain.component;
+            var comp = h.ResolveComponent(chain.component);
             var inst = KPInstance.Create(Mathf.Max(1, chain.targetFramerate));
             inst.UseFixedSubstep = chain.fixedSubstepping ? 1 : 0;
             inst.MaxSubsteps = chain.maxSubsteps;
@@ -1011,7 +1011,7 @@ namespace KawaiiPhysicsUnity
                 {
                     if (other == null || other == chain || !other.sharedCollisionSource) continue;
                     if (other.sharedCollisionTag != chain.sharedCollisionTag) continue;
-                    var otherComp = other.component;
+                    var otherComp = h.ResolveComponent(other.component);
                     if (h.Root(otherComp) != h.Root(comp)) continue; // 原作：同一個 attached actor family
                     AddColliders(b, other.colliders);
                     AddLimitsAsset(b, other.limitsAsset, otherComp);
