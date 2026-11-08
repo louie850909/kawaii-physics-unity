@@ -2,6 +2,13 @@
 
 格式參考 [Keep a Changelog](https://keepachangelog.com/)，版本依 [Semantic Versioning](https://semver.org/)。
 
+## [Unreleased]
+
+### Added
+- 測試：重構用的逐位元快照（`KPSnapshotTests`，記錄檔 `Tests/Editor/KPSnapshots.txt`）。全功能的測試角色 3 種模擬空間、軟組織、
+  每種碰撞體各一個的情境，第 0／1／60 幀把所有 Transform 的本地 TRS 與骨頭狀態各雜湊成一個值。v0.5 陣列接口的重構前後要一致。
+  記錄檔跟 CPU 有關（Burst 的浮點結果），換機器要在重構之前重新記錄。
+
 ## [0.4.7] - 2026-11-08
 
 ### Fixed
