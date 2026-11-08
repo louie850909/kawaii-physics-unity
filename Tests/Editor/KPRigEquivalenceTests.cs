@@ -110,24 +110,154 @@ namespace KawaiiPhysicsUnity.Tests
             return r;
         }
 
-        /// <summary>Output 套回靜止姿勢、從根算到世界：每根骨頭的世界位置。</summary>
-        static Vector3[] WorldPositions(KPRig rig, Skeleton sk, Matrix4x4 rootToWorld)
+        /// <summary>Output 套回靜止姿勢、從根算到世界：每根骨頭的世界位置。modelOut／rotationOut 給了就填模擬空間的姿勢（下一個排程用）。</summary>
+        static Vector3[] WorldPositions(KPRig rig, Skeleton sk, Matrix4x4 rootToWorld,
+            NativeArray<float4x4> modelOut = default, NativeArray<quaternion> rotationOut = default, bool softOnly = false)
         {
             var n = sk.Bones.Count;
             var model = new Matrix4x4[n];
+            var modelRotation = new Quaternion[n];
             var result = new Vector3[n];
             var output = rig.Output;
             for (int i = 0; i < n; i++)
             {
                 var o = output[i];
-                var pos = o.Mode == 2 ? (Vector3)o.LocalPosition : sk.Positions[i];
+                if (softOnly && o.Mode != 3) o.Mode = 0; // 骨鏈的結果是上一幀的：骨鏈的輸入只套軟組織
+                var pos = o.Mode >= 2 ? (Vector3)o.LocalPosition : sk.Positions[i];
                 var rot = o.Mode != 0 ? (Quaternion)o.LocalRotation : sk.Rotations[i];
-                var local = Matrix4x4.TRS(pos, rot, sk.Scales[i]);
-                model[i] = sk.Parents[i] < 0 ? local : model[sk.Parents[i]] * local;
+                var scale = o.Mode == 3 ? (Vector3)o.LocalScale : sk.Scales[i];
+                var local = Matrix4x4.TRS(pos, rot, scale);
+                var p = sk.Parents[i];
+                model[i] = p < 0 ? local : model[p] * local;
+                modelRotation[i] = p < 0 ? rot : modelRotation[p] * rot;
                 result[i] = rootToWorld.MultiplyPoint3x4(model[i].GetColumn(3));
+                if (modelOut.IsCreated)
+                {
+                    modelOut[i] = model[i];
+                    rotationOut[i] = modelRotation[i];
+                }
             }
             return result;
         }
+
+        /// <summary>軟組織元件換成這個骨架的索引（角色根＝骨架的根 → -1）。要在模擬之前做。</summary>
+        static KPRigSoftBody ToRigSoftBody(KawaiiPhysicsSoftBody body, Skeleton sk)
+        {
+            var h = new KPTransformHierarchy();
+            foreach (var t in sk.Bones) h.Id(t);
+            body.CopyStructure(h);
+            body.CopyToSettings();
+            var r = new KPRigSoftBody();
+            JsonUtility.FromJsonOverwrite(JsonUtility.ToJson(body.settings), r);
+            if (r.referenceRoot >= sk.Bones.Count) r.referenceRoot = -1;
+            r.enabled = true;
+            return r;
+        }
+
+        /// <summary>
+        /// 軟組織（胸：傾斜、伸縮、手的碰撞體；臀）先用 Transform 版跑，再用 KPRig 跑。withChains 時骨鏈也一起（軟組織先解）。
+        /// 第 30 幀兩邊都加衝量（全部骨頭、單根骨頭、撞擊點）。
+        /// </summary>
+        static (Run transform, Run rig) RunBothSoft(bool withChains)
+        {
+            KPTestRig.BuildEnvironment(Vector3.zero);
+            var chain = KPTestRig.BuildCharacter("A", Vector3.zero, 0, false);
+            var root = chain.transform;
+            var soft = KPTestRig.AddSoftBodies(root);
+            var sk = new Skeleton(root);
+            var rigChain = withChains ? ToRigChain(chain, sk) : null;
+            var rigSoft = soft.Select(b => ToRigSoftBody(b, sk)).ToArray();
+            void Impulses(Func<int, (Action<Vector3> all, Action<int, Vector3> one, Action<Vector3, Vector3, float> point)> target)
+            {
+                var (all, one, point) = target(0);
+                all(new Vector3(0f, 0.5f, 0.2f));
+                one(1, new Vector3(0.3f, 0f, 0f));
+                point(root.TransformPoint(new Vector3(0.08f, 1.3f, 0.1f)), new Vector3(0f, -0.8f, 0f), 0.15f);
+                var (all1, _, _) = target(1);
+                all1(new Vector3(0f, 0f, -0.4f));
+            }
+
+            var a = new Run();
+            UnityEngine.Random.InitState(RandomSeed);
+            KPSystem.ChainHost.FrameSeed = 1;
+            if (withChains) KPSystem.Register(chain);
+            foreach (var b in soft) KPSystem.Register(b);
+            for (int f = 0; f < Frames; f++)
+            {
+                KPSystem.RestorePhase();
+                KPTestRig.Move(root, 0, f, Vector3.zero);
+                Physics.SyncTransforms();
+                if (f == 30) Impulses(i => (soft[i].AddImpulse, soft[i].AddImpulse, soft[i].AddImpulseAtPosition));
+                KPSystem.SimulatePhase(Dt);
+                a.Positions.Add(sk.Bones.Select(t => t.position).ToArray());
+            }
+            KPSystem.Shutdown();
+
+            var c = new Run();
+            UnityEngine.Random.InitState(RandomSeed);
+            using var rest = new NativeArray<float4x4>(sk.Model, Allocator.Persistent);
+            using var restRotation = new NativeArray<quaternion>(sk.ModelRotation, Allocator.Persistent);
+            using var model = new NativeArray<float4x4>(sk.Model, Allocator.Persistent);
+            using var rotation = new NativeArray<quaternion>(sk.ModelRotation, Allocator.Persistent);
+            using (var rig = sk.CreateRig())
+            {
+                rig.Owner = root;
+                foreach (var b in rigSoft) rig.AddSoftBody(b);
+                if (withChains) rig.AddChain(rigChain);
+                for (int f = 0; f < Frames; f++)
+                {
+                    KPTestRig.Move(root, 0, f, Vector3.zero);
+                    Physics.SyncTransforms();
+                    if (f == 30) Impulses(i => (rigSoft[i].AddImpulse, rigSoft[i].AddImpulse, rigSoft[i].AddImpulseAtPosition));
+                    rig.ScheduleSoftBodies(Frame(root, rest, restRotation)).Complete();
+                    if (withChains)
+                    {
+                        WorldPositions(rig, sk, root.localToWorldMatrix, model, rotation, softOnly: true);
+                        rig.ScheduleChains(Frame(root, model, rotation)).Complete();
+                    }
+                    c.Positions.Add(WorldPositions(rig, sk, root.localToWorldMatrix));
+                }
+                Assert.That(rig.SoftBodyBones.Length, Is.EqualTo(6), "軟組織的骨頭（胸 4、臀 2）");
+                Assert.That(rig.SoftBodies[0].IsSimulating(0), Is.True);
+                Assert.That(rig.SoftBodies[0].GetOffset(1).magnitude, Is.GreaterThan(0f));
+            }
+            return (a, c);
+        }
+
+        [TestCase(false, TestName = "KPRig 等價：軟組織")]
+        [TestCase(true, TestName = "KPRig 等價：軟組織＋骨鏈")]
+        public void SoftBodiesMatchTransformVersion(bool withChains)
+        {
+            var (a, b) = RunBothSoft(withChains);
+            var (early, late, worst) = MaxDiff(a, b);
+            var line = $"KPRig 等價（軟組織{(withChains ? "＋骨鏈" : "")}）最大差：前 10 幀 {early * 1000f:F5} mm、{Frames} 幀內 {late * 1000f:F5} mm（第 {worst} 幀）";
+            TestContext.WriteLine(line);
+            Debug.Log(line);
+            Assert.That(early, Is.LessThanOrEqualTo(1e-5f), "前 10 幀");
+            Assert.That(late, Is.LessThanOrEqualTo(1e-3f), $"{Frames} 幀內");
+        }
+
+        [Test(Description = "軟組織的骨頭清單、拿掉之後結果清掉；骨頭索引超出範圍時丟例外")]
+        public void SoftBodyBookkeeping()
+        {
+            using var rig = new KPRig(new[] { -1, 0 }, new[] { "a", "b" }, new[] { Vector3.zero, Vector3.down * 0.1f }, new[] { Quaternion.identity, Quaternion.identity });
+            Assert.Throws<ArgumentException>(() => rig.AddSoftBody(new KPRigSoftBody { bones = { 7 } }));
+            var body = new KPRigSoftBody { bones = { 1 } };
+            rig.AddSoftBody(body);
+            using var model = new NativeArray<float4x4>(new[] { float4x4.identity, float4x4.Translate(new float3(0f, -0.1f, 0f)) }, Allocator.Persistent);
+            using var rot = new NativeArray<quaternion>(new[] { quaternion.identity, quaternion.identity }, Allocator.Persistent);
+            var root = new GameObject("root").transform;
+            for (int f = 0; f < 10; f++) rig.ScheduleSoftBodies(Frame(root, model, rot)).Complete();
+            Assert.That(rig.SoftBodyBones.ToArray(), Is.EqualTo(new[] { 1 }));
+            Assert.That(rig.AffectedBones.ToArray(), Is.EqualTo(new[] { 1 }));
+            Assert.That(rig.Output[1].Mode, Is.EqualTo(3));
+            Assert.That(rig.SoftBodyCount, Is.EqualTo(1));
+            rig.RemoveSoftBody(body);
+            rig.ScheduleSoftBodies(Frame(root, model, rot)).Complete();
+            Assert.That(rig.SoftBodyBones.Length, Is.EqualTo(0));
+            Assert.That(rig.Output[1].Mode, Is.EqualTo(0));
+        }
+
 
         static KPRigFrame Frame(Transform root, NativeArray<float4x4> model, NativeArray<quaternion> rotation, float dt = Dt) => new KPRigFrame
         {
@@ -484,7 +614,7 @@ namespace KawaiiPhysicsUnity.Tests
             Debug.Log(line);
         }
 
-        [Test(Description = "穩態每幀 0 GC 配置（16 個 KPRig，含一個全功能的）")]
+        [Test(Description = "穩態每幀 0 GC 配置（16 個 KPRig，各有骨鏈與軟組織，含一個全功能的）")]
         public void ZeroAllocationSteadyState()
         {
             KPTestAlloc.Init();
@@ -496,11 +626,13 @@ namespace KawaiiPhysicsUnity.Tests
                 for (int c = 0; c < 16; c++)
                 {
                     var chain = KPTestRig.BuildCharacter($"char{c}", new Vector3(c * 2f, 0f, 0f), c, c == 0);
+                    var soft = KPTestRig.AddSoftBodies(chain.transform);
                     var sk = new Skeleton(chain.transform);
                     var rc = ToRigChain(chain, sk);
                     var rig = sk.CreateRig();
                     rig.Owner = chain.transform;
                     rig.AddChain(rc);
+                    foreach (var b in soft) rig.AddSoftBody(ToRigSoftBody(b, sk));
                     rigs.Add((rig, chain.transform, new NativeArray<float4x4>(sk.Model, Allocator.Persistent),
                         new NativeArray<quaternion>(sk.ModelRotation, Allocator.Persistent)));
                 }
@@ -512,7 +644,11 @@ namespace KawaiiPhysicsUnity.Tests
                         for (int i = 0; i < rigs.Count; i++) KPTestRig.Move(rigs[i].root, i, f, new Vector3(i * 2f, 0f, 0f));
                         Physics.SyncTransforms();
                         var a0 = KPTestAlloc.Now();
-                        foreach (var r in rigs) r.rig.ScheduleChains(Frame(r.root, r.model, r.rot));
+                        foreach (var r in rigs)
+                        {
+                            var h = r.rig.ScheduleSoftBodies(Frame(r.root, r.model, r.rot));
+                            r.rig.ScheduleChains(Frame(r.root, r.model, r.rot), h);
+                        }
                         foreach (var r in rigs) r.rig.Complete();
                         var a1 = KPTestAlloc.Now();
                         if (f >= 60) perFrame[f - 60] = Math.Max(0, a1 - a0);

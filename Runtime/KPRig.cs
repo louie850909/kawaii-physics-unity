@@ -30,11 +30,13 @@ namespace KawaiiPhysicsUnity
     /// <summary>一根骨頭的物理結果（區域空間）。</summary>
     public struct KPRigBoneOutput
     {
-        /// <summary>區域位置（Mode＝2 時有效）。</summary>
+        /// <summary>區域位置（Mode＝2、3 時有效）。</summary>
         public float3 LocalPosition;
-        /// <summary>區域旋轉（Mode＝1、2 時有效）。</summary>
+        /// <summary>區域旋轉（Mode＝1、2、3 時有效）。</summary>
         public quaternion LocalRotation;
-        /// <summary>0＝這一幀沒寫（用動畫的值）、1＝只有旋轉、2＝位置與旋轉。</summary>
+        /// <summary>區域縮放（Mode＝3 時有效：軟組織的伸縮）。</summary>
+        public float3 LocalScale;
+        /// <summary>0＝這一幀沒寫（用動畫的值）、1＝只有旋轉、2＝位置與旋轉（骨鏈）、3＝位置、旋轉與縮放（軟組織）。</summary>
         public int Mode;
     }
 
@@ -44,15 +46,18 @@ namespace KawaiiPhysicsUnity
     /// 每幀呼叫 ScheduleChains，工作完成後讀 Output：AffectedBones 裡、Mode 不是 0 的骨頭換成物理的區域值，再重算模擬空間姿勢。
     /// 用完要 Dispose（會先等正在跑的工作）。
     /// </summary>
-    public sealed class KPRig : IDisposable
+    public sealed partial class KPRig : IDisposable
     {
         readonly KPRigCore core;
         readonly KPArrayHierarchy hierarchy;
         NativeArray<int> parents;
         NativeArray<int> slotNodes;
+        /// <summary>骨鏈會寫的骨頭。</summary>
+        NativeArray<int> chainBones;
+        /// <summary>骨鏈與軟組織會寫的骨頭（AffectedBones）。</summary>
         NativeArray<int> affected;
         NativeArray<KPRigBoneOutput> output;
-        JobHandle pending;
+        JobHandle chainPending;
         bool disposed;
 
         /// <summary>
@@ -77,9 +82,17 @@ namespace KawaiiPhysicsUnity
             core = new KPRigCore(hierarchy, this);
             this.parents = new NativeArray<int>(parents, Allocator.Persistent);
             output = new NativeArray<KPRigBoneOutput>(Mathf.Max(1, n), Allocator.Persistent);
-            for (int i = 0; i < n; i++) output[i] = new KPRigBoneOutput { LocalPosition = restLocalPositions[i], LocalRotation = restLocalRotations[i] };
+            for (int i = 0; i < n; i++)
+                output[i] = new KPRigBoneOutput
+                {
+                    LocalPosition = restLocalPositions[i], LocalRotation = restLocalRotations[i],
+                    LocalScale = restLocalScales != null ? restLocalScales[i] : Vector3.one,
+                };
             slotNodes = new NativeArray<int>(1, Allocator.Persistent);
+            chainBones = new NativeArray<int>(0, Allocator.Persistent);
             affected = new NativeArray<int>(0, Allocator.Persistent);
+            softCore = new KPRigSoftCore(hierarchy, this);
+            InitSoft();
         }
 
         /// <summary>骨頭數。</summary>
@@ -110,10 +123,10 @@ namespace KawaiiPhysicsUnity
             }
         }
 
-        /// <summary>每根骨頭的物理結果（長度＝骨頭數）。ScheduleChains 的工作完成後才能讀。</summary>
+        /// <summary>每根骨頭的物理結果（長度＝骨頭數）。ScheduleSoftBodies／ScheduleChains 的工作完成後才能讀。</summary>
         public NativeArray<KPRigBoneOutput> Output => output;
 
-        /// <summary>骨鏈會寫的骨頭（遞增排序）。重算模擬空間姿勢時只要看這些；下一次排程可能因為加減骨鏈而改變。</summary>
+        /// <summary>骨鏈與軟組織會寫的骨頭（遞增排序）。重算模擬空間姿勢時只要看這些；下一次排程可能因為加減骨鏈、軟組織而改變。</summary>
         public NativeArray<int> AffectedBones => affected;
 
         /// <summary>名稱是 name 的第一根骨頭的索引；沒有時是 -1。</summary>
@@ -155,8 +168,8 @@ namespace KawaiiPhysicsUnity
             if (disposed) throw new ObjectDisposedException(nameof(KPRig));
             if (!frame.Model.IsCreated || frame.Model.Length < BoneCount || !frame.ModelRotation.IsCreated || frame.ModelRotation.Length < BoneCount)
                 throw new ArgumentException("KPRigFrame 的 Model／ModelRotation 要有骨頭數那麼長");
-            Complete();
-            if (core.Update(frame)) return pending = dependsOn;
+            chainPending.Complete();
+            if (core.Update(frame)) return chainPending = dependsOn;
             var world = core.World;
             var ptrs = world.Pointers();
             var read = new KPRigReadJob
@@ -172,29 +185,36 @@ namespace KawaiiPhysicsUnity
             }.Schedule(slotNodes.Length, 64, dependsOn);
             var handle = core.ScheduleSolve(frame.DeltaTime, read, ptrs);
             handle = core.ScheduleCollision(handle, ptrs);
-            pending = new KPRigWriteJob
+            // Output 也由軟組織的寫入工作寫：接在它後面
+            chainPending = new KPRigWriteJob
             {
                 SlotNodes = slotNodes,
-                Affected = affected,
+                Affected = chainBones,
                 Writes = world.Writes,
                 Output = output,
                 BoneCount = BoneCount,
-            }.Schedule(handle);
-            return pending;
+            }.Schedule(JobHandle.CombineDependencies(handle, softPending));
+            return chainPending;
         }
 
-        /// <summary>等排程的工作完成（之後可以讀 Output、改骨鏈）。</summary>
-        public void Complete() => pending.Complete();
+        /// <summary>等排程的工作完成（骨鏈與軟組織；之後可以讀 Output、改骨鏈與軟組織）。</summary>
+        public void Complete()
+        {
+            softPending.Complete();
+            chainPending.Complete();
+        }
 
         /// <summary>等工作完成，釋放原生記憶體。</summary>
         public void Dispose()
         {
             if (disposed) return;
             disposed = true;
-            pending.Complete();
+            Complete();
             core.Dispose();
+            DisposeSoft();
             if (parents.IsCreated) parents.Dispose();
             if (slotNodes.IsCreated) slotNodes.Dispose();
+            if (chainBones.IsCreated) chainBones.Dispose();
             if (affected.IsCreated) affected.Dispose();
             if (output.IsCreated) output.Dispose();
         }
@@ -202,6 +222,7 @@ namespace KawaiiPhysicsUnity
         /// <summary>重建之後：讀寫陣列的每一格對應哪根骨頭、骨鏈會寫哪些骨頭。</summary>
         void RebuildSlots()
         {
+            Complete();
             var world = core.World;
             var slots = world != null ? world.Reads.Length : 0;
             if (slotNodes.Length != Mathf.Max(1, slots))
@@ -219,17 +240,31 @@ namespace KawaiiPhysicsUnity
                     foreach (var (index, _, _) in s.Rest)
                         if (s.Nodes[index] < BoneCount) written.Add(s.Nodes[index]);
                 }
-            affected.Dispose();
-            affected = new NativeArray<int>(written.Count, Allocator.Persistent);
-            var j = 0;
-            foreach (var b in written) affected[j++] = b;
-            // 不再寫的骨頭：結果清掉（呼叫端用動畫的值）
-            for (int i = 0; i < output.Length; i++)
+            // 不再寫的骨頭：結果清掉（呼叫端用動畫的值）。軟組織的不動
+            foreach (var b in chainBones)
             {
-                var o = output[i];
+                if (IsSoftBone(b)) continue;
+                var o = output[b];
                 o.Mode = 0;
-                output[i] = o;
+                output[b] = o;
             }
+            chainBones.Dispose();
+            chainBones = new NativeArray<int>(written.Count, Allocator.Persistent);
+            var j = 0;
+            foreach (var b in written) chainBones[j++] = b;
+            RebuildAffected();
+        }
+
+        /// <summary>AffectedBones＝骨鏈與軟組織會寫的骨頭（遞增）。</summary>
+        void RebuildAffected()
+        {
+            var all = new SortedSet<int>();
+            foreach (var b in chainBones) all.Add(b);
+            foreach (var b in softBones) all.Add(b);
+            affected.Dispose();
+            affected = new NativeArray<int>(all.Count, Allocator.Persistent);
+            var j = 0;
+            foreach (var b in all) affected[j++] = b;
         }
 
         // ===================================================================
@@ -426,7 +461,11 @@ namespace KawaiiPhysicsUnity
                 var w = Writes[i];
                 var node = SlotNodes[i];
                 if (w.Mode == 0 || node < 0 || node >= BoneCount) continue;
-                Output[node] = new KPRigBoneOutput { LocalPosition = w.LocalPosition, LocalRotation = w.LocalRotation, Mode = w.Mode };
+                var o = Output[node];
+                o.LocalPosition = w.LocalPosition;
+                o.LocalRotation = w.LocalRotation;
+                o.Mode = w.Mode;
+                Output[node] = o;
             }
         }
     }

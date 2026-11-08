@@ -4,7 +4,17 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-08
+
+陣列接口（`KPRig`）：沒有 Transform 的角色用的骨鏈與軟組織物理，跟元件版共用同一套程式、結果一致。
+
 ### Added
+- `KPRig` 的軟組織：`AddSoftBody`／`RemoveSoftBody`、`ScheduleSoftBodies(KPRigFrame, JobHandle)`、`SoftBodies`、`SoftBodyCount`、`SoftBodyBones`。
+  結果寫到同一個 `Output`（Mode 3：位置、旋轉、縮放；`KPRigBoneOutput.LocalScale`）。碰撞體與撞擊點衝量在工作裡換算（跟元件版共用同一段換算）。
+  順序是軟組織 → 呼叫端重算 → 骨鏈 → 重算。
+- `KPRigSoftBody` 的執行時操作：`MarkDirty`、`ResetDynamics`、`AddImpulse`（兩種）、`AddImpulseAtPosition`、`IsSimulating`、`GetOffset`、`GetVelocity`。
+- 測試：軟組織、軟組織＋骨鏈的等價（Transform 版與 `KPRig` 同一個角色 120 幀，含碰撞體與三種衝量；實測 ≤ 0.006 mm）、
+  軟組織的骨頭清單與拿掉後清除、骨頭範圍檢查；穩態 0 GC 的測試加上軟組織。
 - 陣列接口 `KPRig`（骨鏈）：沒有 Transform 的角色用的骨鏈物理。骨架（父的索引、名稱、靜止姿勢）在建構時給，骨鏈用 `KPRigChain`；
   每幀 `ScheduleChains(KPRigFrame, JobHandle)` 接在呼叫端的工作後面，結果在 `Output`（每根骨頭的區域值與模式）與 `AffectedBones`。
   建立、每幀的準備、解算都跟 `KawaiiPhysicsChain` 共用同一套程式；每個角色各自一個 world；穩態 0 GC；`Dispose` 會先等工作完成。
@@ -14,6 +24,8 @@
   工作還在跑時 Dispose、三種後端、穩態 0 GC、1／3／16 個角色的效能量測。
 
 ### Changed
+- 內部：軟組織改成用節點 id 與 `KPHierarchy`（跟骨鏈一樣）；共用的部分抽成 `KPSoftCore`（`KPSoftHost` 與 `KPRig` 各自衍生）。
+  執行時的狀態（重建、重置、衝量）搬到 `KPRigSoftBody`，`KawaiiPhysicsSoftBody` 轉給它。元件版的結果不變（`KPSnapshotTests` 逐位元一致）。
 - 內部：骨鏈主機的共用部分抽成 `KPChainCore`（`KPChainHost` 與 `KPRig` 各自衍生）；`KPArrayHierarchy` 是陣列版的骨頭來源。
   外力的每幀內容多帶主機的幀數（共用的程序風時鐘用它，原本讀 `KPSystem.FrameIndex`）。
 

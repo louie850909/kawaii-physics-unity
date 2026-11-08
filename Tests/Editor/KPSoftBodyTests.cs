@@ -326,7 +326,7 @@ namespace KawaiiPhysicsUnity.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => rig.Body.AddImpulse(2, v));
             rig.Body.enabled = false; // 停用中的元件忽略
             rig.Body.AddImpulse(v);
-            Assert.That(rig.Body.pendingUniformImpulse, Is.EqualTo(Vector3.zero));
+            Assert.That(rig.Body.settings.pendingUniformImpulse, Is.EqualTo(Vector3.zero));
         }
 
         // ---- 壓扁與拉伸 -----------------------------------------------------------

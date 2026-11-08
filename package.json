@@ -1,6 +1,6 @@
 {
   "name": "com.louie.kawaii-physics",
-  "version": "0.5.0-pre.1",
+  "version": "0.5.0",
   "displayName": "KawaiiPhysics for Unity",
   "description": "Burst/Jobs port of KawaiiPhysics (pafuhana1213, MIT): pseudo-physics for hair, skirts and accessories driven by bone chains, plus translational soft tissue (breasts, hips) with damped springs.",
   "unity": "6000.6",

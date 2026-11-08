@@ -114,21 +114,22 @@ namespace KawaiiPhysicsUnity
             return s;
         }
 
-        internal bool dirty = true;
-        internal bool validateRequested;
-        internal bool resetRequested;
-        /// <summary>停用過：下次重建時不沿用狀態。</summary>
-        internal bool resetOnRebuild;
-        internal KPSoftBodyRuntime runtime;
-        internal Vector3 pendingUniformImpulse;
-        internal Vector3[] pendingImpulses;
-        internal readonly List<PointImpulse> pendingPointImpulses = new List<PointImpulse>();
+        internal bool dirty { get => settings.dirty; set => settings.dirty = value; }
+        internal bool validateRequested { get => settings.validateRequested; set => settings.validateRequested = value; }
+        internal bool resetRequested { get => settings.resetRequested; set => settings.resetRequested = value; }
+        internal KPSoftBodyRuntime runtime => settings.runtime;
 
-        internal struct PointImpulse
+        /// <summary>骨頭清單與角色根換算成節點 id 放進 settings（註冊、重建、比對前）。</summary>
+        internal void CopyStructure(KPTransformHierarchy h)
         {
-            public Vector3 Position;
-            public Vector3 VelocityChange;
-            public float Radius;
+            var s = settings;
+            s.component = this;
+            s.bones.Clear();
+            foreach (var t in bones) s.bones.Add(t == null ? KPHierarchy.None : h.Id(t));
+            s.referenceRoot = h.Id(ResolveRoot());
+            s.colliders.Clear();
+            foreach (var c in colliders)
+                if (c != null) s.colliders.Add(c.ToSettings(h));
         }
 
         void OnEnable() => KPSystem.Register(this);
@@ -165,7 +166,7 @@ namespace KawaiiPhysicsUnity
         /// <summary>所有骨頭加上速度變化（世界空間，公尺/秒），下一次模擬時生效。停用中的元件忽略。</summary>
         public void AddImpulse(Vector3 velocityChange)
         {
-            if (isActiveAndEnabled) pendingUniformImpulse += velocityChange;
+            if (isActiveAndEnabled) settings.PushImpulse(velocityChange);
         }
 
         /// <summary>bones[boneIndex] 加上速度變化（世界空間，公尺/秒），下一次模擬時生效。停用中的元件忽略。</summary>
@@ -173,14 +174,7 @@ namespace KawaiiPhysicsUnity
         public void AddImpulse(int boneIndex, Vector3 velocityChange)
         {
             if (boneIndex < 0 || boneIndex >= bones.Count) throw new ArgumentOutOfRangeException(nameof(boneIndex));
-            if (!isActiveAndEnabled) return;
-            if (pendingImpulses == null || pendingImpulses.Length != bones.Count)
-            {
-                var resized = new Vector3[bones.Count];
-                if (pendingImpulses != null) Array.Copy(pendingImpulses, resized, Mathf.Min(pendingImpulses.Length, resized.Length));
-                pendingImpulses = resized;
-            }
-            pendingImpulses[boneIndex] += velocityChange;
+            if (isActiveAndEnabled) settings.PushImpulse(boneIndex, velocityChange, bones.Count);
         }
 
         /// <summary>
@@ -189,16 +183,11 @@ namespace KawaiiPhysicsUnity
         /// </summary>
         public void AddImpulseAtPosition(Vector3 worldPosition, Vector3 velocityChange, float radius)
         {
-            if (isActiveAndEnabled) pendingPointImpulses.Add(new PointImpulse { Position = worldPosition, VelocityChange = velocityChange, Radius = radius });
+            if (isActiveAndEnabled) settings.PushImpulseAtPosition(worldPosition, velocityChange, radius);
         }
 
         /// <summary>還沒套用的衝量清掉（重新啟用時）。</summary>
-        internal void ClearPendingImpulses()
-        {
-            pendingUniformImpulse = Vector3.zero;
-            if (pendingImpulses != null) Array.Clear(pendingImpulses, 0, pendingImpulses.Length);
-            pendingPointImpulses.Clear();
-        }
+        internal void ClearPendingImpulses() => settings.ClearPendingImpulses();
 
         /// <summary>bones[boneIndex] 有沒有在模擬（還沒建置、null 或已刪除、被其他元件先拿走的骨頭是 false）。</summary>
         public bool IsSimulating(int boneIndex) => WorldBone(boneIndex) >= 0;

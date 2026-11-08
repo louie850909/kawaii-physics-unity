@@ -297,6 +297,12 @@
 | `ScheduleChains` | method | `JobHandle ScheduleChains(KPRigFrame& frame, JobHandle dependsOn = null)` | 排程這一幀的骨鏈物理（接在 dependsOn 之後；frame 的陣列要在 dependsOn 完成時算好）。主執行緒先做需要時的重建與每幀的準備。回傳寫完 Output 的 JobHandle。frame 的陣列長度不對、骨頭索引超出範圍時丟 ArgumentException。 |
 | `Complete` | method | `Void Complete()` | 等排程的工作完成（之後可以讀 Output、改骨鏈）。 |
 | `Dispose` | method | `Void Dispose()` | 等工作完成，釋放原生記憶體。 |
+| `SoftBodies` | property | `IReadOnlyList<KPRigSoftBody> { get; }` | 軟組織清單（用 AddSoftBody／RemoveSoftBody 增減）。 |
+| `SoftBodyCount` | property | `Int32 { get; }` | 模擬中的軟組織數（下一次排程才反映 AddSoftBody／RemoveSoftBody）。 |
+| `SoftBodyBones` | property | `NativeArray<Int32> { get; }` | 軟組織會寫的骨頭（遞增排序）。ScheduleSoftBodies 之後、ScheduleChains 之前重算模擬空間姿勢時只要看這些。 |
+| `AddSoftBody` | method | `Void AddSoftBody(KPRigSoftBody softBody)` | 加一組軟組織（下一次排程時建立）。骨頭的靜止姿勢用建構時給的骨架。骨頭或角色根的索引超出範圍時丟 ArgumentException。 |
+| `RemoveSoftBody` | method | `Boolean RemoveSoftBody(KPRigSoftBody softBody)` | 拿掉一組軟組織（下一次排程時生效）。回傳有沒有這組。 |
+| `ScheduleSoftBodies` | method | `JobHandle ScheduleSoftBodies(KPRigFrame& frame, JobHandle dependsOn = null)` | 排程這一幀的軟組織（接在 dependsOn 之後）。回傳寫完 Output 的 JobHandle。完成後把 SoftBodyBones 的結果套進姿勢、重算模擬空間，再排 ScheduleChains。 |
 
 ### KPRigBoneOutput
 
@@ -304,9 +310,10 @@
 
 | 成員 | 種類 | 型別／簽章 | 說明 |
 |---|---|---|---|
-| `LocalPosition` | field | `float3` | 區域位置（Mode＝2 時有效）。 |
-| `LocalRotation` | field | `quaternion` | 區域旋轉（Mode＝1、2 時有效）。 |
-| `Mode` | field | `Int32` | 0＝這一幀沒寫（用動畫的值）、1＝只有旋轉、2＝位置與旋轉。 |
+| `LocalPosition` | field | `float3` | 區域位置（Mode＝2、3 時有效）。 |
+| `LocalRotation` | field | `quaternion` | 區域旋轉（Mode＝1、2、3 時有效）。 |
+| `LocalScale` | field | `float3` | 區域縮放（Mode＝3 時有效：軟組織的伸縮）。 |
+| `Mode` | field | `Int32` | 0＝這一幀沒寫（用動畫的值）、1＝只有旋轉、2＝位置與旋轉（骨鏈）、3＝位置、旋轉與縮放（軟組織）。 |
 
 ### KPRigFrame
 
@@ -509,6 +516,14 @@
 | `teleportDistanceThreshold` | field | `Single` | 角色根一幀移動超過這個距離（公尺）就當成瞬移、重置（0＝不判定） |
 | `teleportRotationThreshold` | field | `Single` | 角色根一幀轉動超過這個角度（度）就當成瞬移、重置（0＝不判定） |
 | `enabled` | field | `Boolean` | 模擬中（停用時骨頭維持動畫姿勢；元件版對應 isActiveAndEnabled） |
+| `MarkDirty` | method | `Void MarkDirty()` | 改了 bones 或 referenceRoot 之後呼叫，下一次排程時重建（同一根骨頭的模擬狀態沿用）。其他設定每幀讀取。 |
+| `ResetDynamics` | method | `Void ResetDynamics()` | 下一次模擬時重新初始化：位移回到平衡位置、速度歸零。 |
+| `AddImpulse` | method | `Void AddImpulse(Vector3 velocityChange)` | 所有骨頭加上速度變化（世界空間，公尺/秒），下一次模擬時生效。停用中（enabled＝false）忽略。 |
+| `AddImpulse` | method | `Void AddImpulse(Int32 boneIndex, Vector3 velocityChange)` | bones[boneIndex] 加上速度變化（世界空間，公尺/秒），下一次模擬時生效。停用中忽略。boneIndex 超出範圍時丟 ArgumentOutOfRangeException。 |
+| `AddImpulseAtPosition` | method | `Void AddImpulseAtPosition(Vector3 worldPosition, Vector3 velocityChange, Single radius)` | 撞擊點附近的骨頭加上速度變化（世界空間），依距離衰減：權重 (1 − 距離/radius)²；radius ≤ 0 時不衰減。停用中忽略。 |
+| `IsSimulating` | method | `Boolean IsSimulating(Int32 boneIndex)` | bones[boneIndex] 有沒有在模擬（還沒建置、索引無效、被其他軟組織先拿走的骨頭是 false）。 |
+| `GetOffset` | method | `Vector3 GetOffset(Int32 boneIndex)` | bones[boneIndex] 目前離開錨點的位移（世界空間，公尺；alpha 混合之前）。沒在模擬時是零。 |
+| `GetVelocity` | method | `Vector3 GetVelocity(Int32 boneIndex)` | bones[boneIndex] 目前相對錨點的速度（世界空間，公尺/秒）。沒在模擬時是零。 |
 | `.ctor` | constructor | `()` | 預設建構子。 |
 
 ## 資產
